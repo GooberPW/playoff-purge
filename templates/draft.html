@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_title }} - Interactive Draft{% endblock %}
+
+{% block content %}
+<!-- Draft State Container -->
+<div id="draftContainer">
+    <!-- Header -->
+    <header class="header">
+        <h1>📋 <span id="leagueName">{{ league_meta.league_name }}</span> - Live Draft</h1>
+        <p class="subtitle" id="currentWeek">{{ league_meta.current_week }}</p>
+        <div class="draft-status">
+            <span id="draftStatus" class="status-indicator">Loading...</span>
+            <span class="last-updated">Last Updated: <span id="lastUpdated">{{ league_meta.last_updated }}</span></span>
+        </div>
+    </header>
+
+    <!-- Owner Selector Section -->
+    <section class="owner-selector-section">
+        <div class="owner-selector-card">
+            <label for="ownerSelect" class="owner-label">
+                <span class="label-icon">👤</span>
+                Select Your Name:
+            </label>
+            <select id="ownerSelect" class="owner-select">
+                <option value="">-- Choose your name --</option>
+                {% for team in teams %}
+                <option value="{{ team.owner_name }}">{{ team.owner_name }} ({{ team.team_name }})</option>
+                {% endfor %}
+            </select>
+            <p class="owner-hint">Select your name to enable drafting</p>
+        </div>
+    </section>
+
+    <!-- Current Pick Banner -->
+    <section class="current-pick-banner" id="currentPickBanner">
+        <div class="banner-content">
+            <div class="pick-info">
+                <span class="pick-label">ON THE CLOCK:</span>
+                <span class="pick-owner" id="currentPickOwner">Loading...</span>
+            </div>
+            <div class="pick-details">
+                <span id="pickDetails">Round -, Pick -</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Roster Grid -->
+    <section class="roster-grid-section">
+        <h2>📊 Your Roster</h2>
+        <div id="rosterGrid" class="roster-grid">
+            <p class="loading-message">Select your name to view roster...</p>
+        </div>
+    </section>
+
+    <!-- Available Players Section -->
+    <section class="available-players-section">
+        <h2>🎯 Available Players</h2>
+        
+        <!-- Filters -->
+        <div class="player-filters">
+            <div class="filter-group">
+                <label for="positionFilter">Position:</label>
+                <select id="positionFilter" class="filter-select">
+                    <option value="">All Positions</option>
+                    <option value="QB">QB</option>
+                    <option value="RB">RB</option>
+                    <option value="WR">WR</option>
+                    <option value="TE">TE</option>
+                    <option value="K">K</option>
+                    <option value="DST">DST</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="searchInput">Search:</label>
+                <input type="text" id="searchInput" class="search-input" placeholder="Player name...">
+            </div>
+            <button id="refreshBtn" class="refresh-btn" onclick="loadDraftState()">🔄 Refresh</button>
+        </div>
+
+        <!-- Players Grid -->
+        <div id="playersGrid" class="players-grid">
+            <p class="loading-message">Loading available players...</p>
+        </div>
+    </section>
+
+    <!-- Draft Board Section -->
+    <section class="draft-board-section">
+        <h2>📜 Recent Picks</h2>
+        <div id="draftBoard" class="draft-board">
+            <p class="loading-message">Loading draft board...</p>
+        </div>
+    </section>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Global state
+let draftState = null;
+let availablePlayers = [];
+let selectedOwner = localStorage.getItem('selectedOwner') || '';
+let refreshInterval = null;
+let pollInterval = 10000; // Start with 10 seconds
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Restore owner selection
+    if (selectedOwner) {
+        document.getElementById('ownerSelect').value = selectedOwner;
+    }
+    
+    // Setup event listeners
+    document.getElementById('ownerSelect').addEventListener('change', handleOwnerChange);
+    document.getElementById('positionFilter').addEventListener('change', filterPlayers);
+    document.getElementById('searchInput').addEventListener('input', filterPlayers);
+    
+    // Initial load
+    loadDraftState();
+    
+    // Start adaptive polling
+    startAdaptivePolling();
+});
+
+// Adaptive polling based on turn status
+function startAdaptivePolling() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+    
+    refreshInterval = setInterval(() => {
+        loadDraftState();
+        
+        // Adjust polling interval based on turn
+        const currentPick = draftState?.current_pick;
+        const isMyTurn = currentPick && currentPick.owner_name === selectedOwner;
+        const isDraftComplete = draftState?.draft_state?.draft_complete;
+        
+        if (isDraftComplete) {
+            // Stop polling when draft is complete
+            clearInterval(refreshInterval);
+            console.log('Draft complete - polling stopped');
+        } else if (isMyTurn) {
+            // Poll faster when it's your turn (10 seconds)
+            if (pollInterval !== 10000) {
+                pollInterval = 10000;
+                clearInterval(refreshInterval);
+                startAdaptivePolling();
+            }
+        } else {
+            // Poll slower when waiting (30 seconds)
+            if (pollInterval !== 30000) {
+                pollInterval = 30000;
+                clearInterval(refreshInterval);
+                startAdaptivePolling();
+            }
+        }
+    }, pollInterval);
+}
+
+// Handle owner selection
+function handleOwnerChange(e) {
+    selectedOwner = e.target.value;
+    localStorage.setItem('selectedOwner', selectedOwner);
+    renderRosterGrid();
+    renderPlayers();
+    showToast(`Selected: ${selectedOwner || 'None'}`, 'info');
+}
+
+// Render roster grid showing required positions and filled slots
+function renderRosterGrid() {
+    const grid = document.getElementById('rosterGrid');
+    
+    if (!selectedOwner) {
+        grid.innerHTML = '<p class="empty-message">Please select your name to view your roster</p>';
+        return;
+    }
+    
+    if (!draftState || !draftState.roster_requirement) {
+        grid.innerHTML = '<p class="empty-message">Loading roster requirements...</p>';
+        return;
+    }
+    
+    const requirement = draftState.roster_requirement;
+    const requiredPositions = requirement.positions_required.split(',').map(p => p.trim());
+    
+    // Get current owner's drafted players
+    const myTeam = draftState.teams?.find(t => t.owner_name === selectedOwner);
+    const myDraftedPlayers = myTeam ? (draftState.drafted_rosters?.[myTeam.team_id] || []) : [];
+    
+    // Build position slots
+    const positionSlots = [];
+    const filledPositions = new Set();
+    
+    // Match drafted players to required positions
+    requiredPositions.forEach(position => {
+        const player = myDraftedPlayers.find(p => 
+            p.position === position && !filledPositions.has(p.player_name)
+        );
+        
+        if (player) {
+            filledPositions.add(player.player_name);
+            positionSlots.push({
+                position: position,
+                filled: true,
+                player: player
+            });
+        } else {
+            positionSlots.push({
+                position: position,
+                filled: false,
+                player: null
+            });
+        }
+    });
+    
+    // Calculate progress
+    const filled = positionSlots.filter(s => s.filled).length;
+    const total = positionSlots.length;
+    const progressPercent = (filled / total) * 100;
+    
+    // Render HTML
+    grid.innerHTML = `
+        <div class="roster-grid-container">
+            <div class="roster-header">
+                <h3>${myTeam ? myTeam.team_name : 'Your Team'}</h3>
+                <div class="roster-progress">
+                    <span class="progress-text">${filled}/${total} positions filled</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressPercent}%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="roster-slots">
+                ${positionSlots.map(slot => `
+                    <div class="roster-slot ${slot.filled ? 'filled' : 'empty'}">
+                        <div class="slot-position">
+                            ${slot.position}
+                            ${slot.filled ? '<span class="slot-check">✅</span>' : '<span class="slot-empty">⏳</span>'}
+                        </div>
+                        <div class="slot-player">
+                            ${slot.filled 
+                                ? `<span class="player-name-slot">${slot.player.player_name}</span>
+                                   <span class="player-team-slot">${slot.player.team}</span>` 
+                                : `<span class="empty-text">Need ${slot.position}</span>`
+                            }
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="roster-footer">
+                <span class="payout-info">💰 Weekly Payout: ${requirement.payout}</span>
+                <span class="teams-left-info">👥 ${requirement.teams_left} teams remaining</span>
+            </div>
+        </div>
+    `;
+}
+
+// Load draft state from API
+async function loadDraftState() {
+    try {
+        const response = await fetch('/api/draft/state');
+        if (!response.ok) throw new Error('Failed to fetch draft state');
+        
+        draftState = await response.json();
+        availablePlayers = draftState.available_players || [];
+        
+        updateUI();
+        renderRosterGrid();
+        filterPlayers();
+    } catch (error) {
+        console.error('Error loading draft state:', error);
+        showToast('Error loading draft state', 'error');
+    }
+}
+
+// Update UI with current draft state
+function updateUI() {
+    if (!draftState) return;
+    
+    const state = draftState.draft_state;
+    const currentPick = draftState.current_pick;
+    
+    // Update status
+    const statusEl = document.getElementById('draftStatus');
+    if (state.draft_complete) {
+        statusEl.textContent = '✅ Draft Complete';
+        statusEl.className = 'status-indicator complete';
+    } else if (state.draft_started) {
+        statusEl.textContent = `🔴 Live - Round ${state.current_round}`;
+        statusEl.className = 'status-indicator live';
+    } else {
+        statusEl.textContent = '⏸️ Not Started';
+        statusEl.className = 'status-indicator pending';
+    }
+    
+    // Update current pick banner
+    if (currentPick) {
+        document.getElementById('currentPickOwner').textContent = currentPick.owner_name;
+        document.getElementById('pickDetails').textContent = 
+            `Round ${currentPick.round}, Pick ${currentPick.pick}`;
+        
+        // Highlight if it's your turn
+        const banner = document.getElementById('currentPickBanner');
+        if (currentPick.owner_name === selectedOwner) {
+            banner.classList.add('your-turn');
+        } else {
+            banner.classList.remove('your-turn');
+        }
+    }
+}
+
+// Filter and render players
+function filterPlayers() {
+    const positionFilter = document.getElementById('positionFilter').value;
+    const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+    
+    let filtered = availablePlayers.filter(p => {
+        const matchesPosition = !positionFilter || p.position === positionFilter;
+        const matchesSearch = !searchQuery || 
+            p.player_name.toLowerCase().includes(searchQuery) ||
+            p.nfl_team.toLowerCase().includes(searchQuery);
+        return matchesPosition && matchesSearch;
+    });
+    
+    renderPlayers(filtered);
+}
+
+// Render player cards with enhanced data
+function renderPlayers(players = availablePlayers) {
+    const grid = document.getElementById('playersGrid');
+    
+    if (players.length === 0) {
+        grid.innerHTML = '<p class="empty-message">No players found</p>';
+        return;
+    }
+    
+    const currentPick = draftState?.current_pick;
+    const isMyTurn = currentPick && currentPick.owner_name === selectedOwner;
+    
+    // Render condensed cards with image in top-left
+    grid.innerHTML = players.map(player => {
+        const canDraft = isMyTurn && selectedOwner;
+        const buttonClass = canDraft ? 'draft-btn-compact' : 'draft-btn-compact disabled';
+        const buttonText = !selectedOwner ? 'Select' : 
+                          !isMyTurn ? 'Not Your Turn' : 'DRAFT';
+        
+        // Show FPPG from sheet or "--"
+        const fppg = player.fppg ? player.fppg.toFixed(1) : '--';
+        const opponent = player.opponent || '--';
+        
+        return `
+            <div class="player-card-compact" id="player-${player.player_id}">
+                <div class="player-card-header">
+                    <img 
+                        src="https://d17odppiik753x.cloudfront.net/playerimages/nfl/300x300/${player.player_id.split('-')[1]}.png" 
+                        alt="${player.player_name}"
+                        class="player-image-small"
+                        onerror="this.style.display='none'"
+                    >
+                    <div class="player-details">
+                        <div class="player-name-compact">${player.player_name}</div>
+                        <div class="player-meta">
+                            <span class="pos-badge ${player.position.toLowerCase()}">${player.position}</span>
+                            <span class="team-name">${player.nfl_team}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="player-stats-compact">
+                    <div class="stat-compact">
+                        <span class="stat-label-compact">FPPG</span>
+                        <span class="stat-value-compact">${fppg}</span>
+                    </div>
+                    <div class="stat-compact">
+                        <span class="stat-label-compact">vs</span>
+                        <span class="stat-value-compact">${opponent}</span>
+                    </div>
+                </div>
+                <button 
+                    class="${buttonClass}"
+                    data-player-id="${player.player_id}"
+                    data-player-name="${player.player_name}"
+                    onclick="draftPlayer(this.dataset.playerId, this.dataset.playerName)"
+                    ${!canDraft ? 'disabled' : ''}
+                >
+                    ${buttonText}
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load enhanced player data from FanDuel API
+async function loadPlayerEnhancedData(playerId) {
+    try {
+        const response = await fetch(`/api/player/${playerId}`);
+        if (!response.ok) {
+            console.warn(`Failed to fetch data for player ${playerId}`);
+            updatePlayerStats(playerId, null);
+            return;
+        }
+        
+        const result = await response.json();
+        updatePlayerStats(playerId, result.data);
+    } catch (error) {
+        console.error(`Error loading player data for ${playerId}:`, error);
+        updatePlayerStats(playerId, null);
+    }
+}
+
+// Update player card with enhanced stats
+function updatePlayerStats(playerId, data) {
+    const statsContainer = document.getElementById(`stats-${playerId}`);
+    if (!statsContainer) return;
+    
+    if (!data || !data.projection) {
+        // No data available
+        statsContainer.innerHTML = `
+            <div class="stat-item">
+                <span class="stat-label">Projection:</span>
+                <span class="stat-value">--</span>
+            </div>
+        `;
+        return;
+    }
+    
+    // Build stats HTML
+    let statsHTML = '';
+    
+    // Projection
+    if (data.projection) {
+        statsHTML += `
+            <div class="stat-item projection">
+                <span class="stat-label">Proj:</span>
+                <span class="stat-value">${data.projection} pts</span>
+            </div>
+        `;
+    }
+    
+    // Opponent
+    if (data.opponent) {
+        statsHTML += `
+            <div class="stat-item">
+                <span class="stat-label">vs</span>
+                <span class="stat-value">${data.opponent}</span>
+            </div>
+        `;
+    }
+    
+    // Injury status
+    if (data.injury_status && data.injury_status !== 'HEALTHY') {
+        statsHTML += `
+            <div class="stat-item injury">
+                <span class="injury-badge ${data.injury_status.toLowerCase()}">${data.injury_status}</span>
+            </div>
+        `;
+    }
+    
+    // Recent stats
+    if (data.recent_stats) {
+        statsHTML += `
+            <div class="stat-item recent">
+                <span class="stat-value-small">${data.recent_stats}</span>
+            </div>
+        `;
+    }
+    
+    statsContainer.innerHTML = statsHTML || '<div class="stat-item">No stats available</div>';
+}
+
+// Draft a player
+async function draftPlayer(playerId, playerName) {
+    console.log('draftPlayer called with:', { playerId, playerName, selectedOwner, type: typeof playerId });
+    
+    if (!selectedOwner) {
+        showToast('Please select your name first', 'error');
+        return;
+    }
+    
+    if (!confirm(`Draft ${playerName}?`)) {
+        return;
+    }
+    
+    try {
+        // Keep playerId as string to support FanDuel hyphenated IDs like "124949-103020"
+        if (!playerId || !selectedOwner) {
+            console.error('Validation failed:', { playerId, selectedOwner });
+            throw new Error(`Invalid player ID (${playerId}) or owner name (${selectedOwner})`);
+        }
+        
+        const requestBody = {
+            owner_name: selectedOwner,
+            player_id: playerId  // Send as string
+        };
+        
+        console.log('Sending request:', requestBody);
+        
+        const response = await fetch('/api/draft/pick', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Draft failed');
+        }
+        
+        showToast(`✅ Successfully drafted ${playerName}!`, 'success');
+        
+        // Reload state immediately
+        setTimeout(loadDraftState, 500);
+        
+    } catch (error) {
+        console.error('Error making pick:', error);
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Show toast notification
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = `toast show ${type}`;
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
+</script>
+{% endblock %}

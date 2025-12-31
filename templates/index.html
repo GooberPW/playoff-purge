@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_title }} - Dashboard{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="header">
+    <h1>🏈 {{ league_meta.league_name }}</h1>
+    <p class="subtitle">{{ league_meta.current_week }}</p>
+    <p class="last-updated">Last Updated: {{ league_meta.last_updated }}</p>
+</header>
+
+<!-- Main Content -->
+<main class="main-content">
+    {% if champions %}
+    <section class="champions-section">
+        <h2>🏆 Champions</h2>
+        {% for team in champions %}
+            {% include 'team_card.html' %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if active_teams %}
+    <section class="teams-section">
+        <h2>Active Teams ({{ active_teams|length }})</h2>
+        {% for team in active_teams %}
+            {% include 'team_card.html' %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if eliminated_teams %}
+    <section class="eliminated-section">
+        <h2>Eliminated Teams ({{ eliminated_teams|length }})</h2>
+        {% for team in eliminated_teams %}
+            {% include 'team_card.html' %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if not teams %}
+    <div class="empty-state">
+        <p>No teams found. Please check your Google Sheet configuration.</p>
+    </div>
+    {% endif %}
+</main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Simple expand/collapse functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleButtons = document.querySelectorAll('.toggle-roster');
+        
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const teamCard = this.closest('.team-card');
+                const roster = teamCard.querySelector('.roster');
+                const isExpanded = roster.style.display === 'block';
+                
+                // Toggle roster visibility
+                roster.style.display = isExpanded ? 'none' : 'block';
+                
+                // Update button text
+                this.textContent = isExpanded ? '▼ Show Roster' : '▲ Hide Roster';
+                
+                // Update card state
+                teamCard.classList.toggle('expanded', !isExpanded);
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+<div class="team-card {% if team.is_eliminated %}eliminated{% elif team.is_champion %}champion{% endif %}">
+    <div class="team-header">
+        <div class="team-info">
+            <div class="seed-badge">#{{ team.seed }}</div>
+            <div class="team-names">
+                <h3 class="team-name">{{ team.team_name }}</h3>
+                <p class="owner-name">Owner: {{ team.owner_name }}</p>
+            </div>
+        </div>
+        <div class="team-stats">
+            <div class="points-container">
+                <span class="points-value">{{ "%.1f"|format(team.total_points) }}</span>
+                <span class="points-label">pts</span>
+            </div>
+            <div class="status-badge {{ team.status.lower() }}">
+                {{ team.status_emoji }} {{ team.status.upper() }}
+            </div>
+        </div>
+    </div>
+    
+    {% if team.roster %}
+    <button class="toggle-roster">▼ Show Roster</button>
+    
+    <div class="roster" style="display: none;">
+        <table class="roster-table">
+            <thead>
+                <tr>
+                    <th>Pos</th>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for player in team.roster %}
+                <tr>
+                    <td class="position">{{ player.position }}</td>
+                    <td class="player-name">{{ player.player_name }}</td>
+                    <td class="nfl-team">{{ player.team }}</td>
+                    <td class="player-points">{{ "%.1f"|format(player.points) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="no-roster">No roster data available</p>
+    {% endif %}
+</div>
