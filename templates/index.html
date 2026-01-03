@@ -24,8 +24,25 @@
     {% if active_teams %}
     <section class="teams-section">
         <h2>Active Teams ({{ active_teams|length }})</h2>
-        {% for team in active_teams %}
-            {% include 'team_card.html' %}
+        {% for team in teams %}
+            {% if team.is_active %}
+                {% set total_teams = teams|length %}
+                {% set cut_line = total_teams - 1 %}  {# Last 2 teams cut #}
+                {% set danger_start = total_teams - 4 %}  {# Danger zone starts 4 from end #}
+                
+                {# Determine team status class based on seed #}
+                {% if team.seed >= cut_line %}
+                    {% set status_class = "team-cut" %}
+                {% elif team.seed >= danger_start %}
+                    {% set status_class = "team-danger" %}
+                {% else %}
+                    {% set status_class = "team-safe" %}
+                {% endif %}
+                
+                <div class="{{ status_class }}">
+                    {% include 'team_card.html' %}
+                </div>
+            {% endif %}
         {% endfor %}
     </section>
     {% endif %}

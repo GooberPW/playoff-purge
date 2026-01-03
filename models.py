@@ -10,6 +10,7 @@ class Player:
     player_name: str
     team: str  # NFL team abbreviation
     points: float
+    projected_points: float = 0.0
     status: str = "active"
     
     def __post_init__(self):
@@ -18,6 +19,11 @@ class Player:
             self.points = float(self.points)
         except (ValueError, TypeError):
             self.points = 0.0
+        
+        try:
+            self.projected_points = float(self.projected_points) if self.projected_points else 0.0
+        except (ValueError, TypeError):
+            self.projected_points = 0.0
 
 
 @dataclass
@@ -69,6 +75,13 @@ class Team:
         elif self.is_champion:
             return "🏆"
         return "❓"
+    
+    @property
+    def total_projected_points(self) -> float:
+        """Calculate total projected points from roster."""
+        if not self.roster:
+            return 0.0
+        return sum(player.projected_points for player in self.roster)
 
 
 @dataclass
@@ -143,16 +156,21 @@ class DraftState:
     
     def __post_init__(self):
         """Validate and normalize data."""
+        # Parse current_round separately
         try:
             self.current_round = int(self.current_round)
-            self.current_pick = int(self.current_pick)
-            self.draft_started = str(self.draft_started).lower() in ('true', '1', 'yes')
-            self.draft_complete = str(self.draft_complete).lower() in ('true', '1', 'yes')
         except (ValueError, TypeError):
             self.current_round = 1
+        
+        # Parse current_pick separately
+        try:
+            self.current_pick = int(self.current_pick)
+        except (ValueError, TypeError):
             self.current_pick = 1
-            self.draft_started = False
-            self.draft_complete = False
+        
+        # Parse boolean fields (don't reset on integer parse errors)
+        self.draft_started = str(self.draft_started).lower() in ('true', '1', 'yes')
+        self.draft_complete = str(self.draft_complete).lower() in ('true', '1', 'yes')
 
 
 @dataclass

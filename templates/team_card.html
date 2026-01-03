@@ -9,7 +9,10 @@
         </div>
         <div class="team-stats">
             <div class="points-container">
-                <span class="points-value">{{ "%.1f"|format(team.total_points) }}</span>
+                <span class="points-value">
+                    {{ "%.1f"|format(team.total_points) }}
+                    <span class="projected-points">(Proj: {{ "%.1f"|format(team.total_projected_points) }})</span>
+                </span>
                 <span class="points-label">pts</span>
             </div>
             <div class="status-badge {{ team.status.lower() }}">
@@ -29,6 +32,7 @@
                     <th>Player</th>
                     <th>Team</th>
                     <th>Points</th>
+                    <th>Proj</th>
                 </tr>
             </thead>
             <tbody>
@@ -38,6 +42,7 @@
                     <td class="player-name">{{ player.player_name }}</td>
                     <td class="nfl-team">{{ player.team }}</td>
                     <td class="player-points">{{ "%.1f"|format(player.points) }}</td>
+                    <td class="player-projected">{{ "%.1f"|format(player.projected_points) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

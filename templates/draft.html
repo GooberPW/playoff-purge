@@ -186,6 +186,7 @@ function renderRosterGrid() {
     
     const requirement = draftState.roster_requirement;
     const requiredPositions = requirement.positions_required.split(',').map(p => p.trim());
+    const isDraftComplete = draftState.draft_state?.draft_complete;
     
     // Get current owner's drafted players
     const myTeam = draftState.teams?.find(t => t.owner_name === selectedOwner);
@@ -244,7 +245,8 @@ function renderRosterGrid() {
                         <div class="slot-player">
                             ${slot.filled 
                                 ? `<span class="player-name-slot">${slot.player.player_name}</span>
-                                   <span class="player-team-slot">${slot.player.team}</span>` 
+                                   <span class="player-team-slot">${slot.player.team}</span>
+                                   ${isDraftComplete ? `<button class="draft-btn-compact" onclick="dropPlayer('${slot.player.player_name}')" style="margin-top: 8px;">🗑️ DROP</button>` : ''}` 
                                 : `<span class="empty-text">Need ${slot.position}</span>`
                             }
                         </div>
@@ -262,11 +264,14 @@ function renderRosterGrid() {
 // Load draft state from API
 async function loadDraftState() {
     try {
-        const response = await fetch('/api/draft/state');
+        // Add cache buster to force fresh data
+        const response = await fetch('/api/draft/state?t=' + Date.now());
         if (!response.ok) throw new Error('Failed to fetch draft state');
         
         draftState = await response.json();
         availablePlayers = draftState.available_players || [];
+        
+        console.log('Full draft state loaded:', JSON.stringify(draftState.draft_state, null, 2));
         
         updateUI();
         renderRosterGrid();
@@ -284,10 +289,14 @@ function updateUI() {
     const state = draftState.draft_state;
     const currentPick = draftState.current_pick;
     
+    // Debug logging
+    console.log('Draft State:', state);
+    console.log('Draft Complete:', state.draft_complete, typeof state.draft_complete);
+    
     // Update status
     const statusEl = document.getElementById('draftStatus');
     if (state.draft_complete) {
-        statusEl.textContent = '✅ Draft Complete';
+        statusEl.textContent = '✅ Draft Complete - Free Agency Mode';
         statusEl.className = 'status-indicator complete';
     } else if (state.draft_started) {
         statusEl.textContent = `🔴 Live - Round ${state.current_round}`;
@@ -340,13 +349,26 @@ function renderPlayers(players = availablePlayers) {
     
     const currentPick = draftState?.current_pick;
     const isMyTurn = currentPick && currentPick.owner_name === selectedOwner;
+    const isDraftComplete = draftState?.draft_state?.draft_complete;
     
     // Render condensed cards with image in top-left
     grid.innerHTML = players.map(player => {
-        const canDraft = isMyTurn && selectedOwner;
-        const buttonClass = canDraft ? 'draft-btn-compact' : 'draft-btn-compact disabled';
-        const buttonText = !selectedOwner ? 'Select' : 
-                          !isMyTurn ? 'Not Your Turn' : 'DRAFT';
+        let buttonClass, buttonText, buttonAction, canInteract;
+        
+        if (isDraftComplete) {
+            // Free Agency mode - anyone can add players
+            canInteract = selectedOwner;
+            buttonClass = canInteract ? 'draft-btn-compact' : 'draft-btn-compact disabled';
+            buttonText = !selectedOwner ? 'Select Name' : '➕ ADD';
+            buttonAction = `addPlayer('${player.player_id}', '${player.player_name}')`;
+        } else {
+            // Draft mode - only your turn
+            canInteract = isMyTurn && selectedOwner;
+            buttonClass = canInteract ? 'draft-btn-compact' : 'draft-btn-compact disabled';
+            buttonText = !selectedOwner ? 'Select Name' : 
+                        !isMyTurn ? 'Not Your Turn' : 'DRAFT';
+            buttonAction = `draftPlayer('${player.player_id}', '${player.player_name}')`;
+        }
         
         // Show FPPG from sheet or "--"
         const fppg = player.fppg ? player.fppg.toFixed(1) : '--';
@@ -381,10 +403,8 @@ function renderPlayers(players = availablePlayers) {
                 </div>
                 <button 
                     class="${buttonClass}"
-                    data-player-id="${player.player_id}"
-                    data-player-name="${player.player_name}"
-                    onclick="draftPlayer(this.dataset.playerId, this.dataset.playerName)"
-                    ${!canDraft ? 'disabled' : ''}
+                    onclick="${buttonAction}"
+                    ${!canInteract ? 'disabled' : ''}
                 >
                     ${buttonText}
                 </button>
@@ -519,6 +539,86 @@ async function draftPlayer(playerId, playerName) {
         
     } catch (error) {
         console.error('Error making pick:', error);
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Drop a player (Free Agency)
+async function dropPlayer(playerName) {
+    if (!selectedOwner) {
+        showToast('Please select your name first', 'error');
+        return;
+    }
+    
+    if (!confirm(`Drop ${playerName}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/fa/drop', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                owner_name: selectedOwner,
+                player_name: playerName
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Drop failed');
+        }
+        
+        showToast(`✅ Successfully dropped ${playerName}!`, 'success');
+        
+        // Reload state immediately
+        setTimeout(loadDraftState, 500);
+        
+    } catch (error) {
+        console.error('Error dropping player:', error);
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Add a player (Free Agency)
+async function addPlayer(playerId, playerName) {
+    if (!selectedOwner) {
+        showToast('Please select your name first', 'error');
+        return;
+    }
+    
+    if (!confirm(`Add ${playerName} to your roster?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/fa/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                owner_name: selectedOwner,
+                player_id: playerId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Add failed');
+        }
+        
+        showToast(`✅ Successfully added ${playerName}!`, 'success');
+        
+        // Reload state immediately
+        setTimeout(loadDraftState, 500);
+        
+    } catch (error) {
+        console.error('Error adding player:', error);
         showToast(`Error: ${error.message}`, 'error');
     }
 }

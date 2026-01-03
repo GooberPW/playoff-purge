@@ -111,6 +111,22 @@ section h2 {
     background: linear-gradient(135deg, #fff 0%, #ffeaa7 100%);
 }
 
+/* Cut Line Visualization */
+.team-safe .team-card {
+    border-left-color: var(--success-color);
+    border-left-width: 5px;
+}
+
+.team-danger .team-card {
+    border-left-color: var(--warning-color);
+    border-left-width: 6px;
+}
+
+.team-cut .team-card {
+    border-left-color: var(--danger-color);
+    border-left-width: 6px;
+}
+
 .team-header {
     display: flex;
     justify-content: space-between;
@@ -170,7 +186,16 @@ section h2 {
     font-weight: bold;
     color: var(--primary-color);
     display: block;
-    line-height: 1;
+    line-height: 1.2;
+}
+
+.projected-points {
+    font-size: 0.9rem;
+    font-style: italic;
+    font-weight: normal;
+    color: var(--text-light);
+    display: block;
+    margin-top: 4px;
 }
 
 .points-label {
@@ -295,6 +320,13 @@ section h2 {
     font-weight: bold;
     text-align: right;
     color: var(--primary-color);
+}
+
+.player-projected {
+    font-weight: 600;
+    text-align: right;
+    color: var(--text-light);
+    font-style: italic;
 }
 
 .no-roster {

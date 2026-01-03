@@ -57,11 +57,19 @@ def verify_admin(credentials: Annotated[HTTPBasicCredentials, Depends(security)]
 async def dashboard(request: Request):
     """
     Main dashboard page showing all teams and standings.
+    Sorted by projected points (descending).
     """
     try:
         # Fetch data from Google Sheets
         league_meta = sheets_client.get_league_meta(use_cache=True)
         teams = sheets_client.get_teams_with_rosters(use_cache=True)
+        
+        # Sort teams by projected points (highest first)
+        teams.sort(key=lambda t: t.total_projected_points, reverse=True)
+        
+        # Update seeds based on projection ranking
+        for idx, team in enumerate(teams, start=1):
+            team.seed = idx
         
         # Separate teams by status for better UI
         active_teams = [t for t in teams if t.is_active]
@@ -472,6 +480,153 @@ async def get_draft_api():
         }
     except Exception as e:
         logger.error(f"Error fetching draft data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/fa/drop")
+async def drop_player_api(request: Request):
+    """
+    Drop a player from a team's roster (Free Agency).
+    
+    Request body:
+    {
+        "owner_name": "Goober",
+        "player_name": "Patrick Mahomes"
+    }
+    """
+    try:
+        data = await request.json()
+        owner_name = data.get("owner_name")
+        player_name = data.get("player_name")
+        
+        if not owner_name or not player_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: owner_name and player_name"
+            )
+        
+        # Get team_id for owner
+        teams = sheets_client.get_teams(use_cache=False)
+        team = next((t for t in teams if t.owner_name == owner_name), None)
+        
+        if not team:
+            raise HTTPException(status_code=404, detail=f"Team not found for owner: {owner_name}")
+        
+        # Get current week
+        league_meta = sheets_client.get_league_meta(use_cache=False)
+        
+        # Drop the player
+        success = sheets_client.drop_player(
+            team_id=team.team_id,
+            player_name=player_name,
+            current_week=league_meta.current_week
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Successfully dropped {player_name}",
+                "owner": owner_name
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to drop player")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error dropping player: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/fa/add")
+async def add_player_api(request: Request):
+    """
+    Add a player to a team's roster (Free Agency).
+    
+    Request body:
+    {
+        "owner_name": "Goober",
+        "player_id": "124949-103020"
+    }
+    """
+    try:
+        data = await request.json()
+        owner_name = data.get("owner_name")
+        player_id = data.get("player_id")
+        
+        # Convert player_id to string
+        if player_id is not None:
+            player_id = str(player_id)
+        
+        if not owner_name or not player_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: owner_name and player_id"
+            )
+        
+        # Get team_id for owner
+        teams = sheets_client.get_teams(use_cache=False)
+        team = next((t for t in teams if t.owner_name == owner_name), None)
+        
+        if not team:
+            raise HTTPException(status_code=404, detail=f"Team not found for owner: {owner_name}")
+        
+        # Get current week
+        league_meta = sheets_client.get_league_meta(use_cache=False)
+        
+        # Validate position requirements
+        roster_requirement = sheets_client.get_roster_requirement_for_week(
+            league_meta.current_week,
+            use_cache=False
+        )
+        
+        if roster_requirement:
+            # Get team's current roster for this week
+            drafted_rosters = sheets_client.get_rosters_by_week(
+                league_meta.current_week,
+                use_cache=False
+            )
+            team_roster = drafted_rosters.get(team.team_id, [])
+            
+            # Get player being added
+            available_players = sheets_client.get_available_players(use_cache=False)
+            player = next((p for p in available_players if p.player_id == player_id), None)
+            
+            if player:
+                # Parse requirements
+                required_positions = [p.strip() for p in roster_requirement.positions_required.split(',')]
+                drafted_positions = [p.position for p in team_roster]
+                
+                # Check if this position is still needed
+                needed_count = required_positions.count(player.position)
+                drafted_count = drafted_positions.count(player.position)
+                
+                if drafted_count >= needed_count:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Position {player.position} already filled for this team"
+                    )
+        
+        # Add the player
+        success = sheets_client.add_player(
+            team_id=team.team_id,
+            player_id=player_id,
+            current_week=league_meta.current_week
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Successfully added player {player_id}",
+                "owner": owner_name
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to add player")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding player: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

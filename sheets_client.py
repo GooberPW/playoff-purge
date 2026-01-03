@@ -191,7 +191,7 @@ class SheetsClient:
         Get roster for a specific team from the Rosters tab.
         
         Expected format:
-        | team_id | week | position | player_name | team | points | status |
+        | team_id | week | position | player_name | team | points | projected_points | status |
         """
         cache_key = f"roster_{team_id}"
         
@@ -200,8 +200,8 @@ class SheetsClient:
             return self._cache[cache_key]
         
         try:
-            # Get all rosters (could optimize with filtering in the future)
-            rows = self._get_range("Rosters!A2:G500")
+            # Get all rosters (now includes projected_points column)
+            rows = self._get_range("Rosters!A2:H500")
             
             players = []
             for row in rows:
@@ -219,7 +219,8 @@ class SheetsClient:
                         player_name=row[3],
                         team=row[4],
                         points=row[5],
-                        status=row[6] if len(row) > 6 else "active"
+                        projected_points=row[6] if len(row) > 6 else 0.0,
+                        status=row[7] if len(row) > 7 else "active"
                     )
                     players.append(player)
                 except Exception as e:
@@ -330,8 +331,8 @@ class SheetsClient:
             return self._cache[cache_key]
         
         try:
-            # Get all rosters
-            rows = self._get_range("Rosters!A2:G500")
+            # Get all rosters (now includes projected_points)
+            rows = self._get_range("Rosters!A2:H500")
             
             # Organize by team_id
             rosters_by_team = {}
@@ -353,7 +354,8 @@ class SheetsClient:
                         player_name=row[3],
                         team=row[4],
                         points=row[5],
-                        status=row[6] if len(row) > 6 else "active"
+                        projected_points=row[6] if len(row) > 6 else 0.0,
+                        status=row[7] if len(row) > 7 else "active"
                     )
                     
                     if row_team_id not in rosters_by_team:
@@ -750,6 +752,158 @@ class SheetsClient:
         except Exception as e:
             logger.error(f"Error making draft pick: {e}")
             return False
+    
+    def drop_player(self, team_id: int, player_name: str, current_week: str) -> bool:
+        """
+        Drop a player from a team's roster.
+        
+        Args:
+            team_id: ID of team dropping the player
+            player_name: Name of player to drop
+            current_week: Current week
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Find the player in Rosters tab
+            all_rows = self._get_range("Rosters!A2:H500")
+            player_row = None
+            player_id = None
+            
+            for idx, row in enumerate(all_rows):
+                if len(row) >= 4:
+                    row_team_id = int(row[0]) if row[0] else 0
+                    row_week = row[1].strip() if len(row) > 1 else ""
+                    row_player_name = row[3].strip() if len(row) > 3 else ""
+                    
+                    if (row_team_id == team_id and 
+                        row_week.lower() == current_week.lower() and 
+                        row_player_name == player_name):
+                        player_row = idx + 2  # +2 for header and 0-index
+                        # Try to find player_id from Available_Players
+                        break
+            
+            if player_row is None:
+                logger.error(f"Could not find player {player_name} for team {team_id}")
+                return False
+            
+            # Delete the row from Rosters
+            service = self._build_service()
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=self.sheet_id,
+                body={
+                    "requests": [{
+                        "deleteDimension": {
+                            "range": {
+                                "sheetId": self._get_sheet_id("Rosters"),
+                                "dimension": "ROWS",
+                                "startIndex": player_row - 1,
+                                "endIndex": player_row
+                            }
+                        }
+                    }]
+                }
+            ).execute()
+            
+            # Mark player as available in Available_Players (if exists)
+            available_rows = self._get_range("Available_Players!A2:F500")
+            for idx, row in enumerate(available_rows):
+                if len(row) >= 2 and row[1].strip() == player_name:
+                    available_row = idx + 2
+                    self._update_range(f"Available_Players!F{available_row}", [["available"]])
+                    break
+            
+            # Clear relevant caches
+            self._cache.pop(f"roster_{team_id}", None)
+            self._cache.pop("available_players_all", None)
+            
+            logger.info(f"Successfully dropped {player_name} from team {team_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error dropping player: {e}")
+            return False
+    
+    def add_player(self, team_id: int, player_id: str, current_week: str) -> bool:
+        """
+        Add a player to a team's roster (from free agency).
+        
+        Args:
+            team_id: ID of team adding the player
+            player_id: ID of player to add
+            current_week: Current week
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Get player details from Available_Players
+            all_players = self.get_available_players(use_cache=False)
+            player = next((p for p in all_players if p.player_id == player_id), None)
+            
+            if not player or not player.is_available:
+                logger.error(f"Player {player_id} not available")
+                return False
+            
+            # Add player to Rosters tab (append new row)
+            roster_values = [[
+                team_id,
+                current_week,
+                player.position,
+                player.player_name,
+                player.nfl_team,
+                0,  # points (will be updated later)
+                0,  # projected_points (will be updated later)
+                "active"
+            ]]
+            
+            service = self._build_service()
+            service.spreadsheets().values().append(
+                spreadsheetId=self.sheet_id,
+                range="Rosters!A:H",
+                valueInputOption='RAW',
+                body={'values': roster_values}
+            ).execute()
+            
+            # Mark player as drafted in Available_Players tab
+            all_rows = self._get_range("Available_Players!A2:A500")
+            player_row = None
+            for idx, row in enumerate(all_rows):
+                if len(row) > 0 and str(row[0]) == str(player_id):
+                    player_row = idx + 2  # +2 for header and 0-index
+                    break
+            
+            if player_row:
+                self._update_range(f"Available_Players!F{player_row}", [["drafted"]])
+            
+            # Clear relevant caches
+            self._cache.pop(f"roster_{team_id}", None)
+            self._cache.pop("available_players_all", None)
+            
+            logger.info(f"Successfully added {player.player_name} to team {team_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding player: {e}")
+            return False
+    
+    def _get_sheet_id(self, sheet_name: str) -> int:
+        """Get the sheet ID for a given sheet name."""
+        try:
+            service = self._build_service()
+            spreadsheet = service.spreadsheets().get(spreadsheetId=self.sheet_id).execute()
+            
+            for sheet in spreadsheet.get('sheets', []):
+                if sheet['properties']['title'] == sheet_name:
+                    return sheet['properties']['sheetId']
+            
+            logger.error(f"Sheet '{sheet_name}' not found")
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error getting sheet ID: {e}")
+            return 0
     
     def refresh_cache(self):
         """Clear cache to force fresh data fetch."""
