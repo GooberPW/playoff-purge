@@ -11,6 +11,7 @@ class Player:
     team: str  # NFL team abbreviation
     points: float
     projected_points: float = 0.0
+    roster_eligibility: str = ""  # e.g., "WR/FLEX", "RB/FLEX", "QB"
     status: str = "active"
     
     def __post_init__(self):
@@ -24,6 +25,34 @@ class Player:
             self.projected_points = float(self.projected_points) if self.projected_points else 0.0
         except (ValueError, TypeError):
             self.projected_points = 0.0
+        
+        # Default roster_eligibility to position if not set
+        if not self.roster_eligibility:
+            self.roster_eligibility = self.position
+    
+    def get_eligible_positions(self) -> list:
+        """
+        Get list of positions this player can fill.
+        
+        Returns:
+            List of position strings (e.g., ["WR", "FLEX"] for "WR/FLEX")
+        """
+        if "/" in self.roster_eligibility:
+            return self.roster_eligibility.split("/")
+        return [self.roster_eligibility]
+    
+    def can_fill_position(self, required_position: str) -> bool:
+        """
+        Check if this player can fill a specific roster position.
+        
+        Args:
+            required_position: Position requirement (e.g., "FLEX", "WR", "RB")
+            
+        Returns:
+            True if player is eligible for this position
+        """
+        eligible_positions = self.get_eligible_positions()
+        return required_position.upper() in [pos.upper() for pos in eligible_positions]
 
 
 @dataclass
@@ -126,6 +155,7 @@ class AvailablePlayer:
     nfl_team: str
     bye_week: int
     status: str  # available, drafted
+    roster_eligibility: str = ""  # e.g., "WR/FLEX", "RB/FLEX", "QB"
     fppg: float = None  # Fantasy Points Per Game from PlayerPool_FanDuel
     opponent: str = None  # Opponent team from PlayerPool_FanDuel
     
@@ -138,11 +168,26 @@ class AvailablePlayer:
                 self.fppg = float(self.fppg)
         except (ValueError, TypeError):
             self.bye_week = 0
+        
+        # Default roster_eligibility to position if not set
+        if not self.roster_eligibility:
+            self.roster_eligibility = self.position
     
     @property
     def is_available(self) -> bool:
         """Check if player is available to draft."""
         return self.status.lower() == "available"
+    
+    def get_eligible_positions(self) -> list:
+        """Get list of positions this player can fill."""
+        if "/" in self.roster_eligibility:
+            return self.roster_eligibility.split("/")
+        return [self.roster_eligibility]
+    
+    def can_fill_position(self, required_position: str) -> bool:
+        """Check if this player can fill a specific roster position."""
+        eligible_positions = self.get_eligible_positions()
+        return required_position.upper() in [pos.upper() for pos in eligible_positions]
 
 
 @dataclass

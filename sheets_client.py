@@ -200,8 +200,8 @@ class SheetsClient:
             return self._cache[cache_key]
         
         try:
-            # Get all rosters (now includes projected_points column)
-            rows = self._get_range("Rosters!A2:H500")
+            # Get all rosters (now includes projected_points + roster_eligibility)
+            rows = self._get_range("Rosters!A2:I500")
             
             players = []
             for row in rows:
@@ -220,6 +220,7 @@ class SheetsClient:
                         team=row[4],
                         points=row[5],
                         projected_points=row[6] if len(row) > 6 else 0.0,
+                        roster_eligibility=row[8] if len(row) > 8 else "",
                         status=row[7] if len(row) > 7 else "active"
                     )
                     players.append(player)
@@ -331,8 +332,8 @@ class SheetsClient:
             return self._cache[cache_key]
         
         try:
-            # Get all rosters (now includes projected_points)
-            rows = self._get_range("Rosters!A2:H500")
+            # Get all rosters (now includes projected_points + roster_eligibility)
+            rows = self._get_range("Rosters!A2:I500")
             
             # Organize by team_id
             rosters_by_team = {}
@@ -355,6 +356,7 @@ class SheetsClient:
                         team=row[4],
                         points=row[5],
                         projected_points=row[6] if len(row) > 6 else 0.0,
+                        roster_eligibility=row[8] if len(row) > 8 else "",
                         status=row[7] if len(row) > 7 else "active"
                     )
                     
@@ -408,8 +410,8 @@ class SheetsClient:
             return self._cache[cache_key]
         
         try:
-            # Get available players
-            rows = self._get_range("Available_Players!A2:F500")
+            # Get available players (including roster_eligibility in column G)
+            rows = self._get_range("Available_Players!A2:G500")
             
             # Get enhanced data from PlayerPool_FanDuel (player_id, FPPG, Opponent)
             try:
@@ -470,7 +472,8 @@ class SheetsClient:
                         position=row[2],
                         nfl_team=row[3],
                         bye_week=row[4],
-                        status=row[5]
+                        status=row[5],
+                        roster_eligibility=row[6] if len(row) > 6 else ""
                     )
                     
                     # Add enhanced data if available
@@ -684,16 +687,18 @@ class SheetsClient:
                 return False
             
             # 5. Add player to Rosters tab (append new row)
+            # Rosters structure: A:team_id, B:week, C:position, D:player_name, E:team, 
+            #                    F:points, G:projected_points, H:status, I:roster_eligibility
             roster_values = [[
-                team_id,
-                current_week,
-                player.position,
-                player.player_name,
-                player.nfl_team,
-                0,  # points (will be updated later)
-                "active",
-                draft_state.current_round,
-                draft_state.current_pick
+                team_id,                    # A: team_id
+                current_week,               # B: week
+                player.position,            # C: position
+                player.player_name,         # D: player_name
+                player.nfl_team,            # E: team (NFL team)
+                0,                          # F: points (will be updated later)
+                0,                          # G: projected_points (will be updated later)
+                "active",                   # H: status
+                player.roster_eligibility   # I: roster_eligibility
             ]]
             
             service = self._build_service()
@@ -846,7 +851,7 @@ class SheetsClient:
                 logger.error(f"Player {player_id} not available")
                 return False
             
-            # Add player to Rosters tab (append new row)
+            # Add player to Rosters tab (append new row) including roster_eligibility
             roster_values = [[
                 team_id,
                 current_week,
@@ -855,13 +860,14 @@ class SheetsClient:
                 player.nfl_team,
                 0,  # points (will be updated later)
                 0,  # projected_points (will be updated later)
-                "active"
+                "active",
+                player.roster_eligibility  # roster_eligibility from Available_Players
             ]]
             
             service = self._build_service()
             service.spreadsheets().values().append(
                 spreadsheetId=self.sheet_id,
-                range="Rosters!A:H",
+                range="Rosters!A:I",
                 valueInputOption='RAW',
                 body={'values': roster_values}
             ).execute()

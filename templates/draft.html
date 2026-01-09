@@ -53,6 +53,14 @@
         </div>
     </section>
 
+    <!-- Draft Board Section (Recent Picks) -->
+    <section class="draft-board-section">
+        <h2>📜 Recent Picks</h2>
+        <div id="draftBoard" class="draft-board">
+            <p class="loading-message">Loading recent picks...</p>
+        </div>
+    </section>
+
     <!-- Available Players Section -->
     <section class="available-players-section">
         <h2>🎯 Available Players</h2>
@@ -81,14 +89,6 @@
         <!-- Players Grid -->
         <div id="playersGrid" class="players-grid">
             <p class="loading-message">Loading available players...</p>
-        </div>
-    </section>
-
-    <!-- Draft Board Section -->
-    <section class="draft-board-section">
-        <h2>📜 Recent Picks</h2>
-        <div id="draftBoard" class="draft-board">
-            <p class="loading-message">Loading draft board...</p>
         </div>
     </section>
 </div>
@@ -275,11 +275,60 @@ async function loadDraftState() {
         
         updateUI();
         renderRosterGrid();
+        renderDraftBoard();
         filterPlayers();
     } catch (error) {
         console.error('Error loading draft state:', error);
         showToast('Error loading draft state', 'error');
     }
+}
+
+// Render draft board (recent picks)
+function renderDraftBoard() {
+    const board = document.getElementById('draftBoard');
+    
+    if (!draftState || !draftState.drafted_rosters) {
+        board.innerHTML = '<p class="empty-message">No picks yet</p>';
+        return;
+    }
+    
+    // Collect all drafted players across all teams
+    const allPicks = [];
+    for (const [teamId, players] of Object.entries(draftState.drafted_rosters)) {
+        const team = draftState.teams?.find(t => t.team_id == teamId);
+        players.forEach(player => {
+            allPicks.push({
+                owner: team ? team.owner_name : `Team ${teamId}`,
+                teamName: team ? team.team_name : `Team ${teamId}`,
+                player: player
+            });
+        });
+    }
+    
+    if (allPicks.length === 0) {
+        board.innerHTML = '<p class="empty-message">No picks yet</p>';
+        return;
+    }
+    
+    // Show last 10 picks (most recent first)
+    const recentPicks = allPicks.slice(-10).reverse();
+    
+    board.innerHTML = `
+        <div style="background: var(--bg-card); border-radius: 12px; padding: 20px;">
+            ${recentPicks.map((pick, idx) => `
+                <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div style="flex: 1;">
+                        <strong>${pick.player.player_name}</strong>
+                        <span style="color: var(--text-light); font-size: 0.9rem;"> (${pick.player.position} - ${pick.player.team})</span>
+                    </div>
+                    <div style="text-align: right; color: var(--text-light); font-size: 0.9rem;">
+                        ${pick.owner}
+                    </div>
+                </div>
+            `).join('')}
+            ${allPicks.length > 10 ? `<p style="text-align: center; color: var(--text-light); margin-top: 10px; font-size: 0.9rem;">Showing last 10 of ${allPicks.length} picks</p>` : ''}
+        </div>
+    `;
 }
 
 // Update UI with current draft state

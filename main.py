@@ -35,6 +35,81 @@ templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
 
 
+def validate_roster_with_flex(roster_players: list, required_positions: list) -> tuple[bool, str]:
+    """
+    Validate roster with FLEX eligibility support.
+    
+    Uses a greedy matching algorithm:
+    1. Fill exact position matches first (QB → QB, RB → RB, etc.)
+    2. Fill FLEX slots with remaining FLEX-eligible players
+    3. Ensure all required positions are filled
+    
+    Args:
+        roster_players: List of Player objects with roster_eligibility
+        required_positions: List of position strings (e.g., ["QB", "RB", "WR", "FLEX", "FLEX", "FLEX"])
+        
+    Returns:
+        Tuple of (is_valid: bool, error_message: str)
+    """
+    from collections import Counter
+    from models import Player
+    
+    # Convert to lists for manipulation
+    required = required_positions.copy()
+    players = roster_players.copy()
+    
+    # Track which players have been assigned
+    assigned_players = set()
+    unfilled_positions = []
+    
+    # Phase 1: Fill exact non-FLEX matches first
+    for pos in required[:]:
+        if pos.upper() == "FLEX":
+            continue
+            
+        # Find a player that can fill this exact position
+        for player in players:
+            if player in assigned_players:
+                continue
+                
+            # Check if player can fill this specific position
+            if player.can_fill_position(pos):
+                assigned_players.add(player)
+                required.remove(pos)
+                break
+        else:
+            # No player found for this position
+            unfilled_positions.append(pos)
+    
+    # Phase 2: Fill FLEX slots with remaining FLEX-eligible players
+    flex_slots = [pos for pos in required if pos.upper() == "FLEX"]
+    
+    for flex_slot in flex_slots:
+        # Find any unassigned FLEX-eligible player
+        for player in players:
+            if player in assigned_players:
+                continue
+                
+            if player.can_fill_position("FLEX"):
+                assigned_players.add(player)
+                required.remove(flex_slot)
+                break
+        else:
+            # No FLEX-eligible player available
+            unfilled_positions.append("FLEX")
+    
+    # Check if all positions filled
+    if unfilled_positions:
+        return False, f"Cannot fill required positions: {', '.join(unfilled_positions)}"
+    
+    # Check if we have exactly the right number of players
+    if len(assigned_players) != len(roster_players):
+        extra_players = len(roster_players) - len(assigned_players)
+        return False, f"Roster has {extra_players} extra player(s) that don't fit requirements"
+    
+    return True, "Roster valid"
+
+
 def verify_admin(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
     """Verify admin credentials for protected endpoints."""
     is_correct_username = secrets.compare_digest(
@@ -346,18 +421,30 @@ async def make_draft_pick_api(request: Request):
             player = next((p for p in available_players if p.player_id == player_id), None)
             
             if player:
+                # Simulate adding this player to roster
+                from models import Player
+                simulated_player = Player(
+                    position=player.position,
+                    player_name=player.player_name,
+                    team=player.nfl_team,
+                    points=0,
+                    projected_points=0,
+                    roster_eligibility=player.roster_eligibility,
+                    status="active"
+                )
+                
+                simulated_roster = team_roster + [simulated_player]
+                
                 # Parse requirements
                 required_positions = [p.strip() for p in roster_requirement.positions_required.split(',')]
-                drafted_positions = [p.position for p in team_roster]
                 
-                # Check if this position is still needed
-                needed_count = required_positions.count(player.position)
-                drafted_count = drafted_positions.count(player.position)
+                # Validate with FLEX support
+                is_valid, error_msg = validate_roster_with_flex(simulated_roster, required_positions)
                 
-                if drafted_count >= needed_count:
+                if not is_valid:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Position {player.position} already filled for this team"
+                        detail=f"Cannot add player: {error_msg}"
                     )
         
         # Make the pick
@@ -593,18 +680,30 @@ async def add_player_api(request: Request):
             player = next((p for p in available_players if p.player_id == player_id), None)
             
             if player:
+                # Simulate adding this player to roster
+                from models import Player
+                simulated_player = Player(
+                    position=player.position,
+                    player_name=player.player_name,
+                    team=player.nfl_team,
+                    points=0,
+                    projected_points=0,
+                    roster_eligibility=player.roster_eligibility,
+                    status="active"
+                )
+                
+                simulated_roster = team_roster + [simulated_player]
+                
                 # Parse requirements
                 required_positions = [p.strip() for p in roster_requirement.positions_required.split(',')]
-                drafted_positions = [p.position for p in team_roster]
                 
-                # Check if this position is still needed
-                needed_count = required_positions.count(player.position)
-                drafted_count = drafted_positions.count(player.position)
+                # Validate with FLEX support
+                is_valid, error_msg = validate_roster_with_flex(simulated_roster, required_positions)
                 
-                if drafted_count >= needed_count:
+                if not is_valid:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Position {player.position} already filled for this team"
+                        detail=f"Cannot add player: {error_msg}"
                     )
         
         # Add the player
