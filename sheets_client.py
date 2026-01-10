@@ -26,7 +26,7 @@ class SheetsClient:
         self.service = None
         self._cache = TTLCache(maxsize=100, ttl=settings.cache_ttl_seconds)
         self._last_request_time = 0
-        self._min_request_interval = 0.2  # Rate limiting: 5 req/sec (reduced from 1 sec for better UX)
+        self._min_request_interval = 0.5  # Rate limiting: 2 req/sec (safe for batch operations)
         
     def _build_service(self):
         """Build and cache the Sheets API service."""
@@ -91,6 +91,54 @@ class SheetsClient:
                 time.sleep(2 ** attempt)
         
         return []
+    
+    def _batch_get_ranges(self, ranges: List[str], retry_count: int = 3) -> Dict[str, List[List]]:
+        """
+        Fetch multiple ranges in ONE API call using batchGet.
+        
+        Args:
+            ranges: List of range names (e.g., ["Teams!A2:G100", "Rosters!A2:I500"])
+            retry_count: Number of retries on failure
+            
+        Returns:
+            Dictionary mapping range name to list of rows
+        """
+        service = self._build_service()
+        
+        for attempt in range(retry_count):
+            try:
+                self._rate_limit()
+                result = service.spreadsheets().values().batchGet(
+                    spreadsheetId=self.sheet_id,
+                    ranges=ranges
+                ).execute()
+                
+                # Build dict mapping range to values
+                batch_data = {}
+                for value_range in result.get('valueRanges', []):
+                    range_name = value_range.get('range', '')
+                    values = value_range.get('values', [])
+                    batch_data[range_name] = values
+                    logger.info(f"Batch fetched {len(values)} rows from {range_name}")
+                
+                logger.info(f"Successfully batch fetched {len(batch_data)} ranges in ONE API call")
+                return batch_data
+                
+            except HttpError as e:
+                if e.resp.status in [429, 500, 503]:
+                    wait_time = 2 ** attempt
+                    logger.warning(f"Batch API error {e.resp.status}, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Batch API error: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Unexpected error in batch fetch: {e}")
+                if attempt == retry_count - 1:
+                    raise
+                time.sleep(2 ** attempt)
+        
+        return {}
     
     def get_league_meta(self, use_cache: bool = True) -> LeagueMeta:
         """
@@ -616,6 +664,240 @@ class SheetsClient:
         
         logger.warning("No current pick found in draft order")
         return None
+    
+    def get_all_draft_data(self, use_cache: bool = True) -> dict:
+        """
+        Fetch ALL draft-related data in ONE API call using batchGet.
+        This dramatically reduces API calls and improves performance.
+        
+        Args:
+            use_cache: Whether to use cached data
+            
+        Returns:
+            Dictionary with all parsed draft data
+        """
+        cache_key = "all_draft_data"
+        
+        if use_cache and cache_key in self._cache:
+            logger.debug("Using cached all_draft_data")
+            return self._cache[cache_key]
+        
+        try:
+            # Fetch ALL ranges in ONE API call!
+            logger.info("Fetching all draft data in batch...")
+            batch_data = self._batch_get_ranges([
+                "League_Meta!A2:B10",
+                "Teams!A2:G100",
+                "Roster_Requirements!A2:D10",
+                "Rosters!A2:I500",
+                "Available_Players!A2:G500",
+                "PlayerPool_FanDuel!A1:Z500",
+                "Draft_State!A2:B10",
+                "Draft_Order!A2:G100"
+            ])
+            
+            # Parse League Meta
+            league_meta_rows = batch_data.get("League_Meta!A2:B10", [])
+            meta_dict = {}
+            for row in league_meta_rows:
+                if len(row) >= 2:
+                    key = row[0].strip().lower().replace(" ", "_")
+                    value = row[1].strip()
+                    meta_dict[key] = value
+            
+            league_meta = LeagueMeta(
+                league_name=meta_dict.get("league_name", "PlayoffPurge"),
+                current_week=meta_dict.get("current_week", "Week 18"),
+                last_updated=meta_dict.get("last_updated", "Unknown")
+            )
+            
+            # Parse Teams
+            team_rows = batch_data.get("Teams!A2:G100", [])
+            teams = []
+            for row in team_rows:
+                if len(row) >= 7:
+                    try:
+                        teams.append(Team(
+                            team_id=row[0],
+                            owner_name=row[1],
+                            team_name=row[2],
+                            seed=row[3],
+                            status=row[4],
+                            total_points=row[5],
+                            current_week=row[6]
+                        ))
+                    except Exception as e:
+                        logger.warning(f"Error parsing team row: {e}")
+            teams.sort(key=lambda t: t.seed)
+            
+            # Parse Roster Requirements
+            req_rows = batch_data.get("Roster_Requirements!A2:D10", [])
+            requirements = {}
+            for row in req_rows:
+                if len(row) >= 4:
+                    try:
+                        req = RosterRequirement(
+                            week=row[0],
+                            teams_left=row[1],
+                            positions_required=row[2],
+                            payout=row[3]
+                        )
+                        requirements[req.week.strip().lower()] = req
+                    except Exception as e:
+                        logger.warning(f"Error parsing requirement row: {e}")
+            
+            # Parse Rosters (all weeks, organized by team_id)
+            roster_rows = batch_data.get("Rosters!A2:I500", [])
+            rosters_by_team = {}
+            for row in roster_rows:
+                if len(row) >= 6:
+                    try:
+                        team_id = int(row[0])
+                        week = row[1].strip()
+                        player = Player(
+                            position=row[2],
+                            player_name=row[3],
+                            team=row[4],
+                            points=row[5],
+                            projected_points=row[6] if len(row) > 6 else 0.0,
+                            roster_eligibility=row[8] if len(row) > 8 else "",
+                            status=row[7] if len(row) > 7 else "active"
+                        )
+                        player.week = week  # Store week on player for filtering
+                        
+                        if team_id not in rosters_by_team:
+                            rosters_by_team[team_id] = []
+                        rosters_by_team[team_id].append(player)
+                    except Exception as e:
+                        logger.warning(f"Error parsing roster row: {e}")
+            
+            # Parse Available Players with FPPG data
+            player_rows = batch_data.get("Available_Players!A2:G500", [])
+            pool_rows = batch_data.get("PlayerPool_FanDuel!A1:Z500", [])
+            
+            # Find FPPG and Opponent columns
+            fppg_col_idx = None
+            opponent_col_idx = None
+            if pool_rows and len(pool_rows) > 0:
+                headers = pool_rows[0]
+                for idx, header in enumerate(headers):
+                    header_lower = str(header).lower().strip()
+                    if header_lower == 'fppg':
+                        fppg_col_idx = idx
+                    elif header_lower == 'opponent':
+                        opponent_col_idx = idx
+            
+            # Build player pool lookup
+            pool_data = {}
+            for pool_row in pool_rows[1:]:  # Skip header
+                if len(pool_row) > 0:
+                    p_id = str(pool_row[0])
+                    fppg = None
+                    opponent = None
+                    
+                    if fppg_col_idx is not None and len(pool_row) > fppg_col_idx:
+                        try:
+                            if pool_row[fppg_col_idx]:
+                                fppg = float(pool_row[fppg_col_idx])
+                        except:
+                            pass
+                    
+                    if opponent_col_idx is not None and len(pool_row) > opponent_col_idx:
+                        if pool_row[opponent_col_idx]:
+                            opponent = str(pool_row[opponent_col_idx]).strip()
+                    
+                    pool_data[p_id] = {"fppg": fppg, "opponent": opponent}
+            
+            # Parse available players
+            available_players = []
+            for row in player_rows:
+                if len(row) >= 6:
+                    try:
+                        player = AvailablePlayer(
+                            player_id=row[0],
+                            player_name=row[1],
+                            position=row[2],
+                            nfl_team=row[3],
+                            bye_week=row[4],
+                            status=row[5],
+                            roster_eligibility=row[6] if len(row) > 6 else ""
+                        )
+                        # Add enhanced data
+                        enhanced = pool_data.get(str(player.player_id), {})
+                        player.fppg = enhanced.get("fppg")
+                        player.opponent = enhanced.get("opponent")
+                        available_players.append(player)
+                    except Exception as e:
+                        logger.warning(f"Error parsing available player row: {e}")
+            
+            # Parse Draft State
+            state_rows = batch_data.get("Draft_State!A2:B10", [])
+            state_dict = {}
+            for row in state_rows:
+                if len(row) >= 2:
+                    key = row[0].strip().lower().replace(" ", "_")
+                    value = row[1].strip()
+                    state_dict[key] = value
+            
+            draft_state = DraftState(
+                current_round=state_dict.get("current_round", "1"),
+                current_pick=state_dict.get("current_pick", "1"),
+                draft_started=state_dict.get("draft_started", "false"),
+                draft_complete=state_dict.get("draft_complete", "false"),
+                last_pick_time=state_dict.get("last_pick_time", "")
+            )
+            
+            # Parse Draft Order
+            order_rows = batch_data.get("Draft_Order!A2:G100", [])
+            draft_order = []
+            current_pick_obj = None
+            for row in order_rows:
+                if len(row) >= 5:
+                    try:
+                        pick = DraftPick(
+                            round=row[0],
+                            pick=row[1],
+                            team_id=row[2],
+                            owner_name=row[3],
+                            status=row[4],
+                            player_id=row[5] if len(row) > 5 else 0,
+                            player_name=row[6] if len(row) > 6 else ""
+                        )
+                        draft_order.append(pick)
+                        if pick.is_current:
+                            current_pick_obj = pick
+                    except Exception as e:
+                        logger.warning(f"Error parsing draft order row: {e}")
+            
+            # Build result
+            result = {
+                "league_meta": league_meta,
+                "teams": teams,
+                "requirements": requirements,
+                "rosters": rosters_by_team,
+                "available_players": available_players,
+                "draft_state": draft_state,
+                "draft_order": draft_order,
+                "current_pick": current_pick_obj
+            }
+            
+            self._cache[cache_key] = result
+            logger.info("Successfully fetched and parsed all draft data in ONE API call!")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error fetching all draft data: {e}")
+            # Return empty structure on error
+            return {
+                "league_meta": LeagueMeta("PlayoffPurge", "Week 18", "Unknown"),
+                "teams": [],
+                "requirements": {},
+                "rosters": {},
+                "available_players": [],
+                "draft_state": DraftState(1, 1, False, False, ""),
+                "draft_order": [],
+                "current_pick": None
+            }
     
     def _update_range(self, range_name: str, values: List[List]) -> bool:
         """

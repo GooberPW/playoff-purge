@@ -167,6 +167,7 @@ async def dashboard(request: Request):
                 "eliminated_teams": eliminated_teams,
                 "champions": champions,
                 "app_title": settings.app_title,
+                "app_version": settings.app_version,
             }
         )
     except Exception as e:
@@ -254,6 +255,7 @@ async def draft_page(request: Request):
                 "drafted_rosters": drafted_rosters,
                 "draft_counts": draft_counts,
                 "app_title": settings.app_title,
+                "app_version": settings.app_version,
             }
         )
     except Exception as e:
@@ -293,23 +295,30 @@ async def get_teams_api():
 
 @app.get("/api/draft/state")
 async def get_draft_state_api():
-    """Get current draft state with available players and current pick."""
+    """
+    Get current draft state with available players and current pick.
+    OPTIMIZED: Uses batch fetching to get ALL data in ONE API call!
+    """
     try:
-        draft_state = sheets_client.get_draft_state(use_cache=False)
-        current_pick = sheets_client.get_current_pick(use_cache=False)
-        available_players = sheets_client.get_available_players(use_cache=False)
-        teams = sheets_client.get_teams(use_cache=True)
-        league_meta = sheets_client.get_league_meta(use_cache=True)
-        roster_requirement = sheets_client.get_roster_requirement_for_week(
-            league_meta.current_week,
-            use_cache=True
-        )
+        # Get ALL data in ONE API call!
+        data = sheets_client.get_all_draft_data(use_cache=True)
         
-        # Get drafted rosters for current week
-        drafted_rosters = sheets_client.get_rosters_by_week(
-            league_meta.current_week,
-            use_cache=False
-        )
+        league_meta = data['league_meta']
+        teams = data['teams']
+        draft_state = data['draft_state']
+        current_pick = data['current_pick']
+        available_players = data['available_players']
+        
+        # Get roster requirement for current week
+        current_week_key = league_meta.current_week.strip().lower()
+        roster_requirement = data['requirements'].get(current_week_key)
+        
+        # Filter rosters by current week
+        drafted_rosters = {}
+        for team_id, players in data['rosters'].items():
+            week_players = [p for p in players if hasattr(p, 'week') and p.week.strip().lower() == current_week_key]
+            if week_players:
+                drafted_rosters[team_id] = week_players
         
         return {
             "draft_state": {

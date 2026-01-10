@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     # App
     app_title: str = "PlayoffPurge 2025"
     
+    @property
+    def app_version(self) -> str:
+        """Read version from VERSION file."""
+        try:
+            version_file = Path(__file__).parent / "VERSION"
+            if version_file.exists():
+                return version_file.read_text().strip()
+            return "0.0.0"
+        except Exception:
+            return "0.0.0"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
