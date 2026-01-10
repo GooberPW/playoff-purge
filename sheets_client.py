@@ -665,21 +665,43 @@ class SheetsClient:
         logger.warning("No current pick found in draft order")
         return None
     
-    def get_all_draft_data(self, use_cache: bool = True) -> dict:
+    def get_all_draft_data(self, use_cache: bool = True, force_fresh_draft_state: bool = False) -> dict:
         """
         Fetch ALL draft-related data in ONE API call using batchGet.
         This dramatically reduces API calls and improves performance.
         
         Args:
-            use_cache: Whether to use cached data
+            use_cache: Whether to use cached data for static content
+            force_fresh_draft_state: If True, fetches draft state & current pick fresh
+                                     even if other data is cached (for real-time updates)
             
         Returns:
             Dictionary with all parsed draft data
         """
         cache_key = "all_draft_data"
         
+        # Two-tier caching: Use cached data but refresh draft state if requested
+        if use_cache and cache_key in self._cache and force_fresh_draft_state:
+            logger.info("Using cached data with fresh draft state refresh")
+            cached_data = self._cache[cache_key].copy()
+            
+            # Fetch only draft-critical data fresh (2 quick API calls)
+            try:
+                fresh_draft_state = self.get_draft_state(use_cache=False)
+                fresh_current_pick = self.get_current_pick(use_cache=False)
+                
+                # Update cached data with fresh draft info
+                cached_data['draft_state'] = fresh_draft_state
+                cached_data['current_pick'] = fresh_current_pick
+                
+                logger.info("✅ Refreshed draft state while using cached data")
+                return cached_data
+            except Exception as e:
+                logger.warning(f"Failed to refresh draft state, using fully cached data: {e}")
+                return cached_data
+        
         if use_cache and cache_key in self._cache:
-            logger.debug("Using cached all_draft_data")
+            logger.debug("Using fully cached all_draft_data")
             return self._cache[cache_key]
         
         try:
