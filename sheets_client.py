@@ -26,7 +26,7 @@ class SheetsClient:
         self.service = None
         self._cache = TTLCache(maxsize=100, ttl=settings.cache_ttl_seconds)
         self._last_request_time = 0
-        self._min_request_interval = 1.0  # Rate limiting: 1 req/sec (100 req/100sec API limit)
+        self._min_request_interval = 0.2  # Rate limiting: 5 req/sec (reduced from 1 sec for better UX)
         
     def _build_service(self):
         """Build and cache the Sheets API service."""
@@ -244,12 +244,24 @@ class SheetsClient:
             return []
     
     def get_teams_with_rosters(self, use_cache: bool = True) -> List[Team]:
-        """Get all teams with their rosters loaded."""
+        """
+        Get all teams with their rosters loaded.
+        Optimized to fetch all rosters in ONE API call instead of per-team.
+        """
         teams = self.get_teams(use_cache=use_cache)
+        league_meta = self.get_league_meta(use_cache=use_cache)
         
+        # Fetch all rosters for current week in ONE call
+        all_rosters = self.get_rosters_by_week(
+            league_meta.current_week,
+            use_cache=use_cache
+        )
+        
+        # Assign rosters to teams
         for team in teams:
-            team.roster = self.get_roster(team.team_id, use_cache=use_cache)
+            team.roster = all_rosters.get(team.team_id, [])
         
+        logger.info(f"Loaded rosters for {len(teams)} teams in batch")
         return teams
     
     def get_roster_requirements(self, use_cache: bool = True) -> List[RosterRequirement]:

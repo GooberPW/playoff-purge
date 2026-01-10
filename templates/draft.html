@@ -702,7 +702,7 @@ function updatePlayerStats(playerId, data) {
     statsContainer.innerHTML = statsHTML || '<div class="stat-item">No stats available</div>';
 }
 
-// Draft a player
+// Draft a player with optimistic UI updates
 async function draftPlayer(playerId, playerName) {
     console.log('draftPlayer called with:', { playerId, playerName, selectedOwner, type: typeof playerId });
     
@@ -713,6 +713,19 @@ async function draftPlayer(playerId, playerName) {
     
     if (!confirm(`Draft ${playerName}?`)) {
         return;
+    }
+    
+    // Show immediate feedback
+    showToast(`✅ Drafting ${playerName}...`, 'info');
+    
+    // Disable the button immediately
+    const playerCard = document.getElementById(`player-${playerId}`);
+    if (playerCard) {
+        const draftBtn = playerCard.querySelector('.draft-btn-compact');
+        if (draftBtn) {
+            draftBtn.disabled = true;
+            draftBtn.textContent = 'DRAFTING...';
+        }
     }
     
     try {
@@ -745,12 +758,21 @@ async function draftPlayer(playerId, playerName) {
         
         showToast(`✅ Successfully drafted ${playerName}!`, 'success');
         
-        // Reload state immediately
-        setTimeout(loadDraftState, 500);
+        // Reload state after short delay
+        setTimeout(loadDraftState, 300);
         
     } catch (error) {
         console.error('Error making pick:', error);
-        showToast(`Error: ${error.message}`, 'error');
+        showToast(`❌ Error: ${error.message}`, 'error');
+        
+        // Re-enable button on error
+        if (playerCard) {
+            const draftBtn = playerCard.querySelector('.draft-btn-compact');
+            if (draftBtn) {
+                draftBtn.disabled = false;
+                draftBtn.textContent = 'DRAFT';
+            }
+        }
     }
 }
 
