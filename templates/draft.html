@@ -53,13 +53,30 @@
         </div>
     </section>
 
-    <!-- Draft Board Section (Recent Picks) -->
-    <section class="draft-board-section">
-        <h2>📜 Recent Picks</h2>
-        <div id="draftBoard" class="draft-board">
-            <p class="loading-message">Loading recent picks...</p>
+    <!-- Snake Draft Board Section -->
+    <section class="snake-draft-section">
+        <div class="snake-header">
+            <h2>🐍 Snake Draft Board</h2>
+            <div class="draft-legend">
+                <span class="legend-item"><span class="legend-dot qb"></span> QB</span>
+                <span class="legend-item"><span class="legend-dot rb"></span> RB</span>
+                <span class="legend-item"><span class="legend-dot wr"></span> WR</span>
+                <span class="legend-item"><span class="legend-dot te"></span> TE</span>
+                <span class="legend-item"><span class="legend-dot other"></span> K/DST</span>
+            </div>
+        </div>
+        <div id="snakeDraftBoard" class="snake-draft-board">
+            <p class="loading-message">Loading draft board...</p>
         </div>
     </section>
+
+    <!-- Recent Picks Feed (Side Panel) 
+    <aside class="recent-picks-feed" id="recentPicksFeed">
+        <h3>📜 Recent Picks</h3>
+        <div id="recentPicksList" class="recent-picks-list">
+            <p class="empty-message">No picks yet</p>
+        </div>
+    </aside>-->
 
     <!-- Available Players Section -->
     <section class="available-players-section">
@@ -192,29 +209,77 @@ function renderRosterGrid() {
     const myTeam = draftState.teams?.find(t => t.owner_name === selectedOwner);
     const myDraftedPlayers = myTeam ? (draftState.drafted_rosters?.[myTeam.team_id] || []) : [];
     
-    // Build position slots
+    // Build position slots with FLEX support
     const positionSlots = [];
-    const filledPositions = new Set();
+    const assignedPlayers = new Set();
     
-    // Match drafted players to required positions
+    // Phase 1: Fill exact non-FLEX positions first
     requiredPositions.forEach(position => {
-        const player = myDraftedPlayers.find(p => 
-            p.position === position && !filledPositions.has(p.player_name)
-        );
+        const posUpper = position.toUpperCase();
         
-        if (player) {
-            filledPositions.add(player.player_name);
-            positionSlots.push({
-                position: position,
-                filled: true,
-                player: player
-            });
-        } else {
+        if (posUpper === 'FLEX' || posUpper === 'SUPERFLEX') {
+            // Skip FLEX positions in first pass
             positionSlots.push({
                 position: position,
                 filled: false,
-                player: null
+                player: null,
+                slotIndex: positionSlots.length
             });
+        } else {
+            // Find exact position match
+            const player = myDraftedPlayers.find(p => 
+                p.position.toUpperCase() === posUpper && !assignedPlayers.has(p.player_name)
+            );
+            
+            if (player) {
+                assignedPlayers.add(player.player_name);
+                positionSlots.push({
+                    position: position,
+                    filled: true,
+                    player: player,
+                    slotIndex: positionSlots.length
+                });
+            } else {
+                positionSlots.push({
+                    position: position,
+                    filled: false,
+                    player: null,
+                    slotIndex: positionSlots.length
+                });
+            }
+        }
+    });
+    
+    // Phase 2: Fill FLEX positions with remaining eligible players
+    positionSlots.forEach((slot, index) => {
+        const posUpper = slot.position.toUpperCase();
+        
+        if (!slot.filled && posUpper === 'FLEX') {
+            // FLEX can be filled by RB, WR, or TE
+            const player = myDraftedPlayers.find(p => {
+                const pPos = p.position.toUpperCase();
+                return (pPos === 'RB' || pPos === 'WR' || pPos === 'TE') && 
+                       !assignedPlayers.has(p.player_name);
+            });
+            
+            if (player) {
+                assignedPlayers.add(player.player_name);
+                slot.filled = true;
+                slot.player = player;
+            }
+        } else if (!slot.filled && posUpper === 'SUPERFLEX') {
+            // SUPERFLEX can be filled by any offensive position
+            const player = myDraftedPlayers.find(p => {
+                const pPos = p.position.toUpperCase();
+                return (pPos === 'QB' || pPos === 'RB' || pPos === 'WR' || pPos === 'TE') && 
+                       !assignedPlayers.has(p.player_name);
+            });
+            
+            if (player) {
+                assignedPlayers.add(player.player_name);
+                slot.filled = true;
+                slot.player = player;
+            }
         }
     });
     
@@ -283,52 +348,149 @@ async function loadDraftState() {
     }
 }
 
-// Render draft board (recent picks)
-function renderDraftBoard() {
-    const board = document.getElementById('draftBoard');
+// Load and render snake draft board
+async function renderDraftBoard() {
+    try {
+        const response = await fetch('/api/draft/board?t=' + Date.now());
+        if (!response.ok) throw new Error('Failed to fetch draft board');
+        
+        const data = await response.json();
+        renderSnakeBoard(data);
+        //renderRecentPicks(data);
+    } catch (error) {
+        console.error('Error loading draft board:', error);
+        document.getElementById('snakeDraftBoard').innerHTML = '<p class="empty-message">Error loading draft board</p>';
+    }
+}
+
+// Render snake draft board visualization
+function renderSnakeBoard(data) {
+    const board = document.getElementById('snakeDraftBoard');
     
-    if (!draftState || !draftState.drafted_rosters) {
-        board.innerHTML = '<p class="empty-message">No picks yet</p>';
+    if (!data.rounds || data.rounds.length === 0) {
+        board.innerHTML = '<p class="empty-message">No draft data available</p>';
         return;
     }
     
-    // Collect all drafted players across all teams
+    // Helper function to get position color class
+    const getPositionClass = (position) => {
+        if (!position) return 'other';
+        const pos = position.toUpperCase();
+        if (pos === 'QB') return 'qb';
+        if (pos === 'RB') return 'rb';
+        if (pos === 'WR') return 'wr';
+        if (pos === 'TE') return 'te';
+        return 'other'; // K, DST
+    };
+    
+    // Get unique team names for headers (from first round picks)
+    const teamHeaders = data.rounds[0].picks.map(pick => ({
+        owner: pick.owner_name,
+        team: pick.team_name
+    }));
+    
+    // Build table-style grid
+    let html = `
+        <div class="draft-grid-container">
+            <!-- Team Headers -->
+            <div class="draft-grid-header">
+                <div class="round-label">Round</div>
+                ${teamHeaders.map((team, idx) => `
+                    <div class="team-header ${selectedOwner && team.owner === selectedOwner ? 'your-team' : ''}">
+                        <div class="team-name-compact">${team.owner}</div>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <!-- Rounds as Rows -->
+            ${data.rounds.map(round => {
+                // Reverse picks for even rounds (snake draft)
+                const picksToDisplay = round.round % 2 === 0 ? [...round.picks].reverse() : round.picks;
+                
+                return `
+                    <div class="draft-grid-row">
+                        <div class="round-cell">
+                            <span class="round-num">R${round.round}</span>
+                            <span class="round-dir">${round.round % 2 === 1 ? '→' : '←'}</span>
+                        </div>
+                        ${picksToDisplay.map(pick => {
+                            const isYourPick = selectedOwner && pick.owner_name === selectedOwner;
+                            const isCurrent = pick.is_current;
+                            const isCompleted = pick.is_completed;
+                            
+                            let cellClass = 'pick-cell';
+                            if (isCurrent) cellClass += ' current-pick';
+                            if (isYourPick) cellClass += ' your-pick';
+                            if (!isCompleted) cellClass += ' empty-pick';
+                            
+                            if (isCompleted && pick.player) {
+                                const posClass = getPositionClass(pick.player.position);
+                                return `
+                                    <div class="${cellClass} pos-${posClass}">
+                                        <span class="pos-badge-mini ${posClass}">${pick.player.position}</span>
+                                        <div class="player-name-compact">${pick.player.player_name}</div>
+                                    </div>
+                                `;
+                            } else {
+                                return `
+                                    <div class="${cellClass}">
+                                        <div class="player-name-compact tbd">${isCurrent ? '⏰' : '—'}</div>
+                                    </div>
+                                `;
+                            }
+                        }).join('')}
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    
+    board.innerHTML = html;
+}
+
+// Render recent picks feed
+function renderRecentPicks(data) {
+    const feedList = document.getElementById('recentPicksList');
+    
+    // Collect all completed picks
     const allPicks = [];
-    for (const [teamId, players] of Object.entries(draftState.drafted_rosters)) {
-        const team = draftState.teams?.find(t => t.team_id == teamId);
-        players.forEach(player => {
-            allPicks.push({
-                owner: team ? team.owner_name : `Team ${teamId}`,
-                teamName: team ? team.team_name : `Team ${teamId}`,
-                player: player
-            });
+    data.rounds.forEach(round => {
+        round.picks.forEach(pick => {
+            if (pick.is_completed && pick.player) {
+                allPicks.push({
+                    ...pick,
+                    round: round.round
+                });
+            }
         });
-    }
+    });
     
     if (allPicks.length === 0) {
-        board.innerHTML = '<p class="empty-message">No picks yet</p>';
+        feedList.innerHTML = '<p class="empty-message">No picks yet</p>';
         return;
     }
     
     // Show last 10 picks (most recent first)
     const recentPicks = allPicks.slice(-10).reverse();
     
-    board.innerHTML = `
-        <div style="background: var(--bg-card); border-radius: 12px; padding: 20px;">
-            ${recentPicks.map((pick, idx) => `
-                <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                    <div style="flex: 1;">
-                        <strong>${pick.player.player_name}</strong>
-                        <span style="color: var(--text-light); font-size: 0.9rem;"> (${pick.player.position} - ${pick.player.team})</span>
-                    </div>
-                    <div style="text-align: right; color: var(--text-light); font-size: 0.9rem;">
-                        ${pick.owner}
+    feedList.innerHTML = recentPicks.map(pick => {
+        const posClass = pick.player.position ? pick.player.position.toLowerCase() : 'other';
+        return `
+            <div class="recent-pick-item">
+                <div class="recent-pick-header">
+                    <span class="pick-num">Pick ${pick.pick_number}</span>
+                    <span class="pick-owner-name">${pick.owner_name}</span>
+                </div>
+                <div class="recent-pick-player">
+                    <span class="player-name">${pick.player.player_name}</span>
+                    <div class="player-meta">
+                        <span class="pos-badge ${posClass}">${pick.player.position}</span>
+                        <span class="team-name">${pick.player.nfl_team}</span>
                     </div>
                 </div>
-            `).join('')}
-            ${allPicks.length > 10 ? `<p style="text-align: center; color: var(--text-light); margin-top: 10px; font-size: 0.9rem;">Showing last 10 of ${allPicks.length} picks</p>` : ''}
-        </div>
-    `;
+            </div>
+        `;
+    }).join('');
 }
 
 // Update UI with current draft state
@@ -430,7 +592,7 @@ function renderPlayers(players = availablePlayers) {
                         src="https://d17odppiik753x.cloudfront.net/playerimages/nfl/300x300/${player.player_id.split('-')[1]}.png" 
                         alt="${player.player_name}"
                         class="player-image-small"
-                        onerror="this.style.display='none'"
+                        onerror="this.src='/static/placeholder.png'; this.onerror=null;"
                     >
                     <div class="player-details">
                         <div class="player-name-compact">${player.player_name}</div>

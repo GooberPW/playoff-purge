@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     google_application_credentials_json: Optional[str] = None
     
     # Cache
-    cache_ttl_seconds: int = 300
+    cache_ttl_seconds: int = 600  # 10 minutes to reduce API calls
     
     # Admin
     admin_password: str = "changeme"

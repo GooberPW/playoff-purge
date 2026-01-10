@@ -516,6 +516,95 @@ async def get_player_details(player_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/draft/board")
+async def get_draft_board_api():
+    """
+    Get complete snake draft board with all picks organized by round.
+    Returns 6 rounds with snake ordering - only showing ACTIVE teams.
+    """
+    try:
+        league_meta = sheets_client.get_league_meta(use_cache=False)
+        all_teams = sheets_client.get_teams(use_cache=True)
+        
+        # Filter to active teams only
+        teams = [t for t in all_teams if t.status.lower() == "active"]
+        logger.info(f"Filtered to {len(teams)} active teams (from {len(all_teams)} total)")
+        
+        draft_order = sheets_client.get_draft_order(use_cache=False)
+        drafted_rosters = sheets_client.get_rosters_by_week(
+            league_meta.current_week,
+            use_cache=False
+        )
+        
+        # Build complete draft board with 6 rounds
+        rounds = []
+        num_teams = len(teams)
+        total_rounds = 6
+        
+        for round_num in range(1, total_rounds + 1):
+            # Snake draft: odd rounds go forward, even rounds go backward
+            if round_num % 2 == 1:
+                # Forward: 1, 2, 3, ..., 8 (active teams only)
+                team_order = teams.copy()
+            else:
+                # Backward: 8, 7, 6, ..., 1 (active teams only)
+                team_order = teams[::-1]
+            
+            round_picks = []
+            for idx, team in enumerate(team_order):
+                pick_number = (round_num - 1) * num_teams + idx + 1
+                
+                # Find if this pick has been made from draft_order
+                draft_pick = next(
+                    (p for p in draft_order if p.round == round_num and p.team_id == team.team_id),
+                    None
+                )
+                
+                # Get player info if pick was made
+                player_info = None
+                if draft_pick and draft_pick.is_completed and draft_pick.player_name:
+                    player_info = {
+                        "player_name": draft_pick.player_name,
+                        "player_id": draft_pick.player_id,
+                        "position": "N/A",  # We'll try to get this from rosters
+                        "nfl_team": "N/A"
+                    }
+                    
+                    # Try to get more details from drafted_rosters
+                    team_roster = drafted_rosters.get(team.team_id, [])
+                    for player in team_roster:
+                        if player.player_name == draft_pick.player_name:
+                            player_info["position"] = player.position
+                            player_info["nfl_team"] = player.team
+                            break
+                
+                round_picks.append({
+                    "pick_number": pick_number,
+                    "round": round_num,
+                    "team_id": team.team_id,
+                    "owner_name": team.owner_name,
+                    "team_name": team.team_name,
+                    "is_current": draft_pick.is_current if draft_pick else False,
+                    "is_completed": draft_pick.is_completed if draft_pick else False,
+                    "player": player_info
+                })
+            
+            rounds.append({
+                "round": round_num,
+                "picks": round_picks
+            })
+        
+        return {
+            "rounds": rounds,
+            "total_rounds": total_rounds,
+            "teams_count": num_teams
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching draft board: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/draft")
 async def get_draft_api():
     """

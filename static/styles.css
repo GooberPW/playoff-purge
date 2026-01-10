@@ -1685,3 +1685,771 @@ section h2 {
         padding: 15px;
     }
 }
+
+/* Snake Draft Board Styles */
+.snake-draft-section {
+    margin-bottom: 30px;
+}
+
+.snake-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.snake-header h2 {
+    margin: 0;
+}
+
+.draft-legend {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    background: var(--bg-card);
+    padding: 10px 20px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.legend-dot.qb { background: #e74c3c; }
+.legend-dot.rb { background: #27ae60; }
+.legend-dot.wr { background: #3498db; }
+.legend-dot.te { background: #f39c12; }
+.legend-dot.other { background: #95a5a6; }
+
+.snake-draft-board {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+
+/* Compact Grid Layout */
+.draft-grid-container {
+    display: flex;
+    flex-direction: column;
+    min-width: fit-content;
+    font-size: 0.85rem;
+}
+
+.draft-grid-header {
+    display: grid;
+    grid-template-columns: 70px repeat(8, 110px);
+    gap: 6px;
+    margin-bottom: 8px;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    z-index: 10;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary-color);
+}
+
+.round-label {
+    font-weight: bold;
+    color: var(--primary-color);
+    font-size: 0.75rem;
+    text-align: center;
+    padding: 8px 4px;
+    background: var(--bg-light);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.team-header {
+    background: var(--bg-light);
+    border-radius: 4px;
+    padding: 6px 4px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: var(--text-dark);
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.team-header.your-team {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+
+.team-name-compact {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.draft-grid-row {
+    display: grid;
+    grid-template-columns: 70px repeat(8, 110px);
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.round-cell {
+    background: var(--bg-light);
+    border-radius: 4px;
+    padding: 8px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-weight: bold;
+}
+
+.round-num {
+    font-size: 0.85rem;
+    color: var(--primary-color);
+}
+
+.round-dir {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+
+.pick-cell {
+    background: white;
+    border-radius: 4px;
+    padding: 6px 4px;
+    border: 2px solid var(--border-color);
+    transition: all 0.2s ease;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.pick-cell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border-color);
+}
+
+.pick-cell.pos-qb::before { background: #e74c3c; }
+.pick-cell.pos-rb::before { background: #27ae60; }
+.pick-cell.pos-wr::before { background: #3498db; }
+.pick-cell.pos-te::before { background: #f39c12; }
+.pick-cell.pos-other::before { background: #95a5a6; }
+
+.pick-cell.empty-pick {
+    background: rgba(189, 195, 199, 0.05);
+    border-style: dashed;
+}
+
+.pick-cell.current-pick {
+    animation: pulse-pick 2s infinite;
+    border-color: var(--warning-color);
+    border-width: 3px;
+    box-shadow: 0 0 10px rgba(243, 156, 18, 0.4);
+}
+
+.pick-cell.your-pick {
+    border-color: var(--success-color);
+    border-width: 3px;
+    background: rgba(46, 204, 113, 0.05);
+}
+
+.pick-cell:hover:not(.empty-pick) {
+    transform: scale(1.02);
+    box-shadow: var(--shadow);
+    z-index: 5;
+}
+
+.pos-badge-mini {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 0.65rem;
+    color: white;
+    text-transform: uppercase;
+}
+
+.pos-badge-mini.qb { background: #e74c3c; }
+.pos-badge-mini.rb { background: #27ae60; }
+.pos-badge-mini.wr { background: #3498db; }
+.pos-badge-mini.te { background: #f39c12; }
+.pos-badge-mini.k, .pos-badge-mini.dst, .pos-badge-mini.other { background: #95a5a6; }
+
+.pick-cell .player-name-compact {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    text-align: center;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    max-width: 100%;
+}
+
+.pick-cell .player-name-compact.tbd {
+    color: var(--text-light);
+    font-style: italic;
+    font-size: 1rem;
+}
+
+/* Old snake round styles (keep for backwards compatibility if needed) */
+.snake-round {
+    margin-bottom: 20px;
+}
+
+.snake-round:last-child {
+    margin-bottom: 0;
+}
+
+.round-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: var(--bg-light);
+    border-radius: 6px;
+}
+
+.round-number {
+    font-weight: bold;
+    color: var(--primary-color);
+    font-size: 1rem;
+}
+
+.round-arrow {
+    font-size: 1.2rem;
+    color: var(--secondary-color);
+}
+
+.round-picks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.pick-card {
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    transition: all 0.2s ease;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.pick-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--border-color);
+    transition: all 0.2s ease;
+}
+
+/* Position-based colors */
+.pick-card.pos-qb::before { background: #e74c3c; }
+.pick-card.pos-rb::before { background: #27ae60; }
+.pick-card.pos-wr::before { background: #3498db; }
+.pick-card.pos-te::before { background: #f39c12; }
+.pick-card.pos-other::before { background: #95a5a6; }
+
+.pick-card.pos-qb {
+    border-color: rgba(231, 76, 60, 0.3);
+    background: rgba(231, 76, 60, 0.02);
+}
+
+.pick-card.pos-rb {
+    border-color: rgba(39, 174, 96, 0.3);
+    background: rgba(39, 174, 96, 0.02);
+}
+
+.pick-card.pos-wr {
+    border-color: rgba(52, 152, 219, 0.3);
+    background: rgba(52, 152, 219, 0.02);
+}
+
+.pick-card.pos-te {
+    border-color: rgba(243, 156, 18, 0.3);
+    background: rgba(243, 156, 18, 0.02);
+}
+
+.pick-card.pos-other {
+    border-color: rgba(149, 165, 166, 0.3);
+    background: rgba(149, 165, 166, 0.02);
+}
+
+.pick-card.empty-pick {
+    background: rgba(189, 195, 199, 0.05);
+    border-style: dashed;
+}
+
+.pick-card.current-pick {
+    animation: pulse-pick 2s infinite;
+    border-color: var(--warning-color);
+    border-width: 3px;
+    box-shadow: 0 0 15px rgba(243, 156, 18, 0.3);
+}
+
+.pick-card.your-pick {
+    border-color: var(--success-color);
+    border-width: 3px;
+    background: rgba(46, 204, 113, 0.05);
+}
+
+@keyframes pulse-pick {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(243, 156, 18, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(243, 156, 18, 0.6);
+    }
+}
+
+.pick-card:hover:not(.empty-pick) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
+.pick-number {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.pick-owner {
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    font-weight: 600;
+    margin-bottom: 8px;
+    line-height: 1.2;
+}
+
+.pick-player {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+}
+
+.pick-player .player-name {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.pick-player .player-name.tbd {
+    color: var(--text-light);
+    font-style: italic;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+.player-info {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.team-abbr {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    font-weight: 600;
+}
+
+/* Recent Picks Feed */
+.recent-picks-feed {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 30px;
+}
+
+.recent-picks-feed h3 {
+    color: var(--primary-color);
+    font-size: 1.3rem;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.recent-picks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.recent-pick-item {
+    background: var(--bg-light);
+    border-radius: 8px;
+    padding: 12px;
+    border-left: 4px solid var(--secondary-color);
+    transition: all 0.2s ease;
+    animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.recent-pick-item:hover {
+    background: white;
+    box-shadow: var(--shadow);
+    transform: translateX(-2px);
+}
+
+.recent-pick-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.pick-num {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--secondary-color);
+    padding: 2px 8px;
+    background: rgba(52, 152, 219, 0.1);
+    border-radius: 4px;
+}
+
+.pick-owner-name {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    font-weight: 600;
+}
+
+.recent-pick-player {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.recent-pick-player .player-name {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.recent-pick-player .player-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+/* Mobile Responsiveness for Snake Board */
+@media (max-width: 1024px) {
+    .recent-picks-feed {
+        order: -1; /* Move above snake board on tablet */
+    }
+    
+    .draft-grid-header,
+    .draft-grid-row {
+        grid-template-columns: 60px repeat(8, 90px);
+    }
+    
+    .snake-draft-board {
+        overflow-x: scroll;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .team-header {
+        font-size: 0.7rem;
+        padding: 4px 2px;
+    }
+    
+    .pick-cell {
+        min-height: 50px;
+        padding: 4px 2px;
+    }
+    
+    .pick-cell .player-name-compact {
+        font-size: 0.7rem;
+    }
+    
+    .pos-badge-mini {
+        font-size: 0.6rem;
+        padding: 1px 4px;
+    }
+}
+
+@media (max-width: 768px) {
+    .snake-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .draft-legend {
+        width: 100%;
+        justify-content: space-between;
+        padding: 6px 10px;
+    }
+
+    .legend-item {
+        font-size: 0.7rem;
+    }
+    
+    .snake-draft-board {
+        padding: 10px;
+        overflow-x: scroll;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .draft-grid-header,
+    .draft-grid-row {
+        grid-template-columns: 45px repeat(8, 70px);
+        gap: 3px;
+    }
+    
+    .round-label {
+        font-size: 0.7rem;
+        padding: 6px 2px;
+    }
+    
+    .team-header {
+        font-size: 0.65rem;
+        padding: 4px 2px;
+    }
+    
+    .round-cell {
+        padding: 6px 2px;
+    }
+    
+    .round-num {
+        font-size: 0.75rem;
+    }
+    
+    .round-dir {
+        font-size: 0.8rem;
+    }
+    
+    .pick-cell {
+        min-height: 45px;
+        padding: 4px 2px;
+    }
+    
+    .pick-cell .player-name-compact {
+        font-size: 0.65rem;
+        -webkit-line-clamp: 3;
+    }
+    
+    .pos-badge-mini {
+        font-size: 0.55rem;
+        padding: 1px 3px;
+    }
+
+    /* Old styles for backwards compatibility */
+    .round-picks {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+    }
+
+    .pick-card {
+        padding: 10px;
+        min-height: 100px;
+    }
+
+    .pick-owner {
+        font-size: 0.8rem;
+    }
+
+    .pick-player .player-name {
+        font-size: 0.85rem;
+    }
+
+    .recent-picks-feed {
+        padding: 15px;
+    }
+
+    .recent-picks-list {
+        max-height: 400px;
+    }
+}
+
+@media (max-width: 480px) {
+    .draft-legend {
+        gap: 6px;
+        padding: 6px 8px;
+    }
+
+    .legend-item {
+        font-size: 0.65rem;
+    }
+
+    .legend-dot {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .snake-draft-board {
+        padding: 8px;
+        overflow-x: scroll;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .draft-grid-header,
+    .draft-grid-row {
+        grid-template-columns: 40px repeat(8, 60px);
+        gap: 2px;
+    }
+    
+    .draft-grid-row {
+        margin-bottom: 2px;
+    }
+    
+    .round-label {
+        font-size: 0.65rem;
+        padding: 4px 2px;
+    }
+    
+    .team-header {
+        font-size: 0.6rem;
+        padding: 3px 1px;
+    }
+    
+    .round-cell {
+        padding: 4px 2px;
+    }
+    
+    .round-num {
+        font-size: 0.7rem;
+    }
+    
+    .round-dir {
+        font-size: 0.75rem;
+    }
+    
+    .pick-cell {
+        min-height: 40px;
+        padding: 3px 2px;
+        border-width: 1px;
+    }
+    
+    .pick-cell::before {
+        height: 2px;
+    }
+    
+    .pick-cell .player-name-compact {
+        font-size: 0.6rem;
+        -webkit-line-clamp: 3;
+    }
+    
+    .pick-cell .player-name-compact.tbd {
+        font-size: 0.85rem;
+    }
+    
+    .pos-badge-mini {
+        font-size: 0.5rem;
+        padding: 1px 2px;
+    }
+    
+    .pick-cell.current-pick,
+    .pick-cell.your-pick {
+        border-width: 2px;
+    }
+
+    /* Old styles for backwards compatibility */
+    .round-picks {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .pick-card {
+        padding: 8px;
+        min-height: 90px;
+    }
+
+    .pick-number {
+        font-size: 0.7rem;
+    }
+
+    .pick-owner {
+        font-size: 0.75rem;
+    }
+
+    .pick-player .player-name {
+        font-size: 0.8rem;
+    }
+
+    .team-abbr {
+        font-size: 0.7rem;
+    }
+
+    .recent-pick-item {
+        padding: 10px;
+    }
+}
+
+/* Scrollbar styling for recent picks */
+.recent-picks-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.recent-picks-list::-webkit-scrollbar-track {
+    background: var(--bg-light);
+    border-radius: 4px;
+}
+
+.recent-picks-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.recent-picks-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-light);
+}

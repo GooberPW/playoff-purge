@@ -26,7 +26,7 @@ class SheetsClient:
         self.service = None
         self._cache = TTLCache(maxsize=100, ttl=settings.cache_ttl_seconds)
         self._last_request_time = 0
-        self._min_request_interval = 0.1  # Rate limiting: 10 req/sec max
+        self._min_request_interval = 1.0  # Rate limiting: 1 req/sec (100 req/100sec API limit)
         
     def _build_service(self):
         """Build and cache the Sheets API service."""
