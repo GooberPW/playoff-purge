@@ -39,10 +39,8 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
     """
     Validate roster with FLEX eligibility support.
     
-    Uses a greedy matching algorithm:
-    1. Fill exact position matches first (QB → QB, RB → RB, etc.)
-    2. Fill FLEX slots with remaining FLEX-eligible players
-    3. Ensure all required positions are filled
+    During draft: Allows incomplete rosters, just checks if players can fit.
+    When roster is full: Validates all positions are filled correctly.
     
     Args:
         roster_players: List of Player objects with roster_eligibility
@@ -54,13 +52,24 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
     from collections import Counter
     from models import Player
     
-    # Convert to lists for manipulation
+    # Log for debugging
+    logger.info(f"Validating roster with {len(roster_players)} players:")
+    for p in roster_players:
+        logger.info(f"  - {p.player_name} ({p.position}) - eligibility: {p.roster_eligibility}")
+    logger.info(f"Required positions: {required_positions}")
+    
+    # If roster is empty or less than required, it's always valid (still drafting)
+    if len(roster_players) == 0:
+        return True, "Empty roster is valid during draft"
+    
+    # If roster has MORE players than required positions, that's invalid
+    if len(roster_players) > len(required_positions):
+        return False, f"Roster has too many players: {len(roster_players)} > {len(required_positions)}"
+    
+    # Try to match each player to a position using greedy algorithm
     required = required_positions.copy()
     players = roster_players.copy()
-    
-    # Track which players have been assigned
-    assigned_players = set()
-    unfilled_positions = []
+    assigned_indices = set()
     
     # Phase 1: Fill exact non-FLEX matches first
     for pos in required[:]:
@@ -68,45 +77,42 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
             continue
             
         # Find a player that can fill this exact position
-        for player in players:
-            if player in assigned_players:
+        for idx, player in enumerate(players):
+            if idx in assigned_indices:
                 continue
                 
-            # Check if player can fill this specific position
             if player.can_fill_position(pos):
-                assigned_players.add(player)
+                assigned_indices.add(idx)
                 required.remove(pos)
+                logger.info(f"  ✓ Matched {player.player_name} to {pos}")
                 break
-        else:
-            # No player found for this position
-            unfilled_positions.append(pos)
     
     # Phase 2: Fill FLEX slots with remaining FLEX-eligible players
     flex_slots = [pos for pos in required if pos.upper() == "FLEX"]
     
     for flex_slot in flex_slots:
         # Find any unassigned FLEX-eligible player
-        for player in players:
-            if player in assigned_players:
+        for idx, player in enumerate(players):
+            if idx in assigned_indices:
                 continue
                 
             if player.can_fill_position("FLEX"):
-                assigned_players.add(player)
+                assigned_indices.add(idx)
                 required.remove(flex_slot)
+                logger.info(f"  ✓ Matched {player.player_name} to FLEX")
                 break
-        else:
-            # No FLEX-eligible player available
-            unfilled_positions.append("FLEX")
     
-    # Check if all positions filled
-    if unfilled_positions:
-        return False, f"Cannot fill required positions: {', '.join(unfilled_positions)}"
+    # Check if all players were assigned
+    if len(assigned_indices) != len(roster_players):
+        unassigned = [players[i].player_name for i in range(len(players)) if i not in assigned_indices]
+        return False, f"Cannot fit player(s) into roster: {', '.join(unassigned)}"
     
-    # Check if we have exactly the right number of players
-    if len(assigned_players) != len(roster_players):
-        extra_players = len(roster_players) - len(assigned_players)
-        return False, f"Roster has {extra_players} extra player(s) that don't fit requirements"
+    # If roster is complete (all positions filled), validate no positions are unfilled
+    if len(roster_players) == len(required_positions):
+        if len(required) > 0:
+            return False, f"Complete roster missing positions: {', '.join(required)}"
     
+    logger.info(f"  ✓ Roster valid with {len(assigned_indices)}/{len(required_positions)} positions filled")
     return True, "Roster valid"
 
 

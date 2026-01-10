@@ -26,9 +26,13 @@ class Player:
         except (ValueError, TypeError):
             self.projected_points = 0.0
         
-        # Default roster_eligibility to position if not set
-        if not self.roster_eligibility:
-            self.roster_eligibility = self.position
+        # Default roster_eligibility: RB/WR/TE can fill FLEX
+        if not self.roster_eligibility or self.roster_eligibility.strip() == "":
+            pos = self.position.upper()
+            if pos in ["RB", "WR", "TE"]:
+                self.roster_eligibility = f"{pos}/FLEX"
+            else:
+                self.roster_eligibility = pos
     
     def get_eligible_positions(self) -> list:
         """
@@ -169,9 +173,13 @@ class AvailablePlayer:
         except (ValueError, TypeError):
             self.bye_week = 0
         
-        # Default roster_eligibility to position if not set
-        if not self.roster_eligibility:
-            self.roster_eligibility = self.position
+        # Default roster_eligibility: RB/WR/TE can fill FLEX
+        if not self.roster_eligibility or self.roster_eligibility.strip() == "":
+            pos = self.position.upper()
+            if pos in ["RB", "WR", "TE"]:
+                self.roster_eligibility = f"{pos}/FLEX"
+            else:
+                self.roster_eligibility = pos
     
     @property
     def is_available(self) -> bool:
