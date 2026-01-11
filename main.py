@@ -297,13 +297,14 @@ async def get_teams_api():
 async def get_draft_state_api():
     """
     Get current draft state with available players and current pick.
-    OPTIMIZED: Uses batch fetching + two-tier caching for real-time draft updates!
+    OPTIMIZED: Uses batch fetching + dynamic caching based on draft state!
     """
     try:
-        # Two-tier caching: Use cached data but always refresh draft state
+        # Dynamic caching: Draft page prioritizes real-time during draft
         data = sheets_client.get_all_draft_data(
             use_cache=True,
-            force_fresh_draft_state=True  # Fetch fresh draft state for real-time updates
+            force_fresh_draft_state=True,  # Fetch fresh draft state for real-time updates
+            context="draft"  # Draft page context for dynamic cache behavior
         )
         
         league_meta = data['league_meta']

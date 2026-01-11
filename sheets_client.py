@@ -25,6 +25,7 @@ class SheetsClient:
         self.sheet_id = settings.google_sheet_id
         self.service = None
         self._cache = TTLCache(maxsize=100, ttl=settings.cache_ttl_seconds)
+        self._cache_timestamps = {}  # Track when each cache entry was created
         self._last_request_time = 0
         self._min_request_interval = 0.5  # Rate limiting: 2 req/sec (safe for batch operations)
         
@@ -665,23 +666,54 @@ class SheetsClient:
         logger.warning("No current pick found in draft order")
         return None
     
-    def get_all_draft_data(self, use_cache: bool = True, force_fresh_draft_state: bool = False) -> dict:
+    def get_all_draft_data(self, use_cache: bool = True, force_fresh_draft_state: bool = False, context: str = "draft") -> dict:
         """
         Fetch ALL draft-related data in ONE API call using batchGet.
         This dramatically reduces API calls and improves performance.
+        
+        Uses dynamic caching based on draft state:
+        - During draft: Draft page cached longer, dashboard shorter
+        - After draft: Dashboard cached longer, draft page shorter
         
         Args:
             use_cache: Whether to use cached data for static content
             force_fresh_draft_state: If True, fetches draft state & current pick fresh
                                      even if other data is cached (for real-time updates)
+            context: "draft" or "dashboard" - determines cache behavior
             
         Returns:
             Dictionary with all parsed draft data
         """
         cache_key = "all_draft_data"
         
+        # Check if we should use cache based on context and draft state
+        should_use_cache = use_cache
+        if use_cache and cache_key in self._cache:
+            cached_data = self._cache[cache_key]
+            is_draft_complete = cached_data.get('draft_state', DraftState(1, 1, False, False, "")).draft_complete
+            cache_age = time.time() - self._cache_timestamps.get(cache_key, 0)
+            
+            # Dynamic cache invalidation based on SOURCE OF TRUTH matrix
+            if is_draft_complete:
+                # AFTER DRAFT (Draft Mode OFF, draft_complete=true)
+                if context == "dashboard":
+                    # Dashboard: SHORT cache (60s) for live scoring
+                    if cache_age > 60:
+                        should_use_cache = False
+                        logger.info(f"Dashboard cache expired after draft (age: {cache_age:.0f}s > 60s, live scoring mode)")
+                # Draft page uses default LONG cache (10 min) - no override needed
+                
+            else:
+                # DURING DRAFT (Draft Mode ON, draft_complete=false)
+                if context == "draft":
+                    # Draft page: SHORT cache (60s) for bulk data (draft state always fresh via force_fresh)
+                    if cache_age > 60:
+                        should_use_cache = False
+                        logger.info(f"Draft page cache expired during draft (age: {cache_age:.0f}s > 60s, active draft mode)")
+                # Dashboard uses default LONG cache (10 min) - no override needed
+        
         # Two-tier caching: Use cached data but refresh draft state if requested
-        if use_cache and cache_key in self._cache and force_fresh_draft_state:
+        if should_use_cache and cache_key in self._cache and force_fresh_draft_state:
             logger.info("Using cached data with fresh draft state refresh")
             cached_data = self._cache[cache_key].copy()
             
@@ -700,8 +732,8 @@ class SheetsClient:
                 logger.warning(f"Failed to refresh draft state, using fully cached data: {e}")
                 return cached_data
         
-        if use_cache and cache_key in self._cache:
-            logger.debug("Using fully cached all_draft_data")
+        if should_use_cache and cache_key in self._cache:
+            logger.debug(f"Using fully cached all_draft_data (context: {context})")
             return self._cache[cache_key]
         
         try:
@@ -904,6 +936,7 @@ class SheetsClient:
             }
             
             self._cache[cache_key] = result
+            self._cache_timestamps[cache_key] = time.time()  # Track when cached
             logger.info("Successfully fetched and parsed all draft data in ONE API call!")
             return result
             
