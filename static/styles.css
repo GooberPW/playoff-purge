@@ -1101,6 +1101,14 @@ section h2 {
 .pos-badge.te { background: #f39c12; }
 .pos-badge.k { background: #9b59b6; }
 .pos-badge.dst { background: #34495e; }
+.pos-badge.superflex {
+    background: linear-gradient(90deg, #e74c3c, #3498db, #2ecc71, #f39c12);
+    color: white;
+}
+.pos-badge.flex {
+    background: linear-gradient(90deg, #3498db, #2ecc71, #f39c12);
+    color: white;
+}
 
 .team-name {
     font-size: 0.8rem;
@@ -1239,6 +1247,16 @@ section h2 {
 
 .player-position-badge.dst {
     background: #34495e;
+}
+
+.player-position-badge.superflex {
+    background: linear-gradient(90deg, #e74c3c, #3498db, #2ecc71, #f39c12);
+    color: white;
+}
+
+.player-position-badge.flex {
+    background: linear-gradient(90deg, #3498db, #2ecc71, #f39c12);
+    color: white;
 }
 
 .player-info {

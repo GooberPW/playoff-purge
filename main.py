@@ -71,9 +71,9 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
     players = roster_players.copy()
     assigned_indices = set()
     
-    # Phase 1: Fill exact non-FLEX matches first
+    # Phase 1: Fill exact non-FLEX/non-SUPERFLEX matches first
     for pos in required[:]:
-        if pos.upper() == "FLEX":
+        if pos.upper() in ["FLEX", "SUPERFLEX"]:
             continue
             
         # Find a player that can fill this exact position
@@ -87,9 +87,24 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
                 logger.info(f"  ✓ Matched {player.player_name} to {pos}")
                 break
     
-    # Phase 2: Fill FLEX slots with remaining FLEX-eligible players
+    # Phase 2: Fill SUPERFLEX and FLEX slots with remaining eligible players
+    superflex_slots = [pos for pos in required if pos.upper() == "SUPERFLEX"]
     flex_slots = [pos for pos in required if pos.upper() == "FLEX"]
     
+    # Fill SUPERFLEX first (QB/RB/WR/TE)
+    for superflex_slot in superflex_slots:
+        # Find any unassigned SUPERFLEX-eligible player (QB/RB/WR/TE)
+        for idx, player in enumerate(players):
+            if idx in assigned_indices:
+                continue
+                
+            if player.can_fill_position("SUPERFLEX"):
+                assigned_indices.add(idx)
+                required.remove(superflex_slot)
+                logger.info(f"  ✓ Matched {player.player_name} to SUPERFLEX")
+                break
+    
+    # Then fill FLEX (RB/WR/TE)
     for flex_slot in flex_slots:
         # Find any unassigned FLEX-eligible player
         for idx, player in enumerate(players):

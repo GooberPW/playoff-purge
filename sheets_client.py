@@ -523,17 +523,27 @@ class SheetsClient:
             
             players = []
             for row in rows:
-                if len(row) < 6:
+                if len(row) < 4:  # Need at least: id, name, position, team
                     continue
                 
                 try:
+                    # Handle flexible column structure
+                    # Some sheets have: id, name, pos, team, opponent, injury, roster_eligibility
+                    # Expected: id, name, pos, team, bye_week, status, roster_eligibility
+                    
+                    # Always default to "available" unless explicitly marked "drafted"
+                    status_col = row[5] if len(row) > 5 else "available"
+                    # If status column doesn't say "drafted", treat as available
+                    if status_col.lower() not in ["drafted", "unavailable"]:
+                        status_col = "available"
+                    
                     player = AvailablePlayer(
                         player_id=row[0],
                         player_name=row[1],
                         position=row[2],
                         nfl_team=row[3],
-                        bye_week=row[4],
-                        status=row[5],
+                        bye_week=row[4] if len(row) > 4 else 0,
+                        status=status_col,
                         roster_eligibility=row[6] if len(row) > 6 else ""
                     )
                     

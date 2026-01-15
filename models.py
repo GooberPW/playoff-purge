@@ -50,13 +50,25 @@ class Player:
         Check if this player can fill a specific roster position.
         
         Args:
-            required_position: Position requirement (e.g., "FLEX", "WR", "RB")
+            required_position: Position requirement (e.g., "FLEX", "SUPERFLEX", "WR", "RB")
             
         Returns:
             True if player is eligible for this position
         """
+        req_pos = required_position.upper()
+        player_pos = self.position.upper()
+        
+        # SUPERFLEX can be filled by QB, RB, WR, or TE (any offensive position)
+        if req_pos == "SUPERFLEX":
+            return player_pos in ["QB", "RB", "WR", "TE"]
+        
+        # FLEX can be filled by RB, WR, or TE
+        if req_pos == "FLEX":
+            return player_pos in ["RB", "WR", "TE"]
+        
+        # Check against player's roster_eligibility
         eligible_positions = self.get_eligible_positions()
-        return required_position.upper() in [pos.upper() for pos in eligible_positions]
+        return req_pos in [pos.upper() for pos in eligible_positions]
 
 
 @dataclass
@@ -193,9 +205,29 @@ class AvailablePlayer:
         return [self.roster_eligibility]
     
     def can_fill_position(self, required_position: str) -> bool:
-        """Check if this player can fill a specific roster position."""
+        """
+        Check if this player can fill a specific roster position.
+        
+        Args:
+            required_position: Position requirement (e.g., "FLEX", "SUPERFLEX", "WR", "RB")
+            
+        Returns:
+            True if player is eligible for this position
+        """
+        req_pos = required_position.upper()
+        player_pos = self.position.upper()
+        
+        # SUPERFLEX can be filled by QB, RB, WR, or TE (any offensive position)
+        if req_pos == "SUPERFLEX":
+            return player_pos in ["QB", "RB", "WR", "TE"]
+        
+        # FLEX can be filled by RB, WR, or TE
+        if req_pos == "FLEX":
+            return player_pos in ["RB", "WR", "TE"]
+        
+        # Check against player's roster_eligibility
         eligible_positions = self.get_eligible_positions()
-        return required_position.upper() in [pos.upper() for pos in eligible_positions]
+        return req_pos in [pos.upper() for pos in eligible_positions]
 
 
 @dataclass
