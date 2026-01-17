@@ -87,11 +87,24 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
                 logger.info(f"  ✓ Matched {player.player_name} to {pos}")
                 break
     
-    # Phase 2: Fill SUPERFLEX and FLEX slots with remaining eligible players
-    superflex_slots = [pos for pos in required if pos.upper() == "SUPERFLEX"]
+    # Phase 2: Fill FLEX first, then SUPERFLEX (most flexible last)
     flex_slots = [pos for pos in required if pos.upper() == "FLEX"]
+    superflex_slots = [pos for pos in required if pos.upper() == "SUPERFLEX"]
     
-    # Fill SUPERFLEX first (QB/RB/WR/TE)
+    # Fill FLEX first (RB/WR/TE only) - more restrictive
+    for flex_slot in flex_slots:
+        # Find any unassigned FLEX-eligible player (RB/WR/TE)
+        for idx, player in enumerate(players):
+            if idx in assigned_indices:
+                continue
+                
+            if player.can_fill_position("FLEX"):
+                assigned_indices.add(idx)
+                required.remove(flex_slot)
+                logger.info(f"  ✓ Matched {player.player_name} to FLEX")
+                break
+    
+    # Then fill SUPERFLEX last (QB/RB/WR/TE) - most flexible
     for superflex_slot in superflex_slots:
         # Find any unassigned SUPERFLEX-eligible player (QB/RB/WR/TE)
         for idx, player in enumerate(players):
@@ -102,19 +115,6 @@ def validate_roster_with_flex(roster_players: list, required_positions: list) ->
                 assigned_indices.add(idx)
                 required.remove(superflex_slot)
                 logger.info(f"  ✓ Matched {player.player_name} to SUPERFLEX")
-                break
-    
-    # Then fill FLEX (RB/WR/TE)
-    for flex_slot in flex_slots:
-        # Find any unassigned FLEX-eligible player
-        for idx, player in enumerate(players):
-            if idx in assigned_indices:
-                continue
-                
-            if player.can_fill_position("FLEX"):
-                assigned_indices.add(idx)
-                required.remove(flex_slot)
-                logger.info(f"  ✓ Matched {player.player_name} to FLEX")
                 break
     
     # Check if all players were assigned
