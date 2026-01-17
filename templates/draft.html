@@ -250,7 +250,8 @@ function renderRosterGrid() {
         }
     });
     
-    // Phase 2: Fill FLEX positions with remaining eligible players
+    // Phase 2: Fill FLEX first, then SUPERFLEX (most flexible last)
+    // Fill FLEX slots first (RB/WR/TE only) - more restrictive
     positionSlots.forEach((slot, index) => {
         const posUpper = slot.position.toUpperCase();
         
@@ -267,8 +268,15 @@ function renderRosterGrid() {
                 slot.filled = true;
                 slot.player = player;
             }
-        } else if (!slot.filled && posUpper === 'SUPERFLEX') {
-            // SUPERFLEX can be filled by any offensive position
+        }
+    });
+    
+    // Then fill SUPERFLEX slots last (QB/RB/WR/TE) - most flexible
+    positionSlots.forEach((slot, index) => {
+        const posUpper = slot.position.toUpperCase();
+        
+        if (!slot.filled && posUpper === 'SUPERFLEX') {
+            // SUPERFLEX can be filled by any offensive position (QB/RB/WR/TE)
             const player = myDraftedPlayers.find(p => {
                 const pPos = p.position.toUpperCase();
                 return (pPos === 'QB' || pPos === 'RB' || pPos === 'WR' || pPos === 'TE') && 
